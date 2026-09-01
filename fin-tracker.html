@@ -1,0 +1,1590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fin Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- Firebase (compat SDK — simplest for a single static file, no build step) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<style>
+  :root{
+    --bg1: #0B0B0C;
+    --glass: rgba(255,255,255,0.045);
+    --glass-strong: rgba(255,255,255,0.07);
+    --glass-border: rgba(255,255,255,0.09);
+    --text: #EFEDE8;
+    --text-soft: #8C8A85;
+    --accent: #C9A96A;
+    --accent-soft: rgba(201,169,106,0.14);
+    --green: #7FAE8E;
+    --red: #BD7E76;
+    --radius: 14px;
+    --shadow-card: 0 8px 32px rgba(0,0,0,0.28);
+  }
+  body[data-theme="light"]{
+    --bg1: #F7F5F0;
+    --glass: rgba(255,255,255,0.62);
+    --glass-strong: rgba(255,255,255,0.8);
+    --glass-border: rgba(20,18,12,0.09);
+    --text: #211F1A;
+    --text-soft: #7A776D;
+    --accent: #A9822F;
+    --accent-soft: rgba(169,130,47,0.12);
+    --green: #4F8A68;
+    --red: #A9564C;
+    --shadow-card: 0 8px 28px rgba(20,18,12,0.08);
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    min-height:100vh;
+    font-family:'Inter',sans-serif;
+    color: var(--text);
+    background: var(--bg1);
+    position: relative;
+    overflow-x: hidden;
+    padding-bottom: 60px;
+    transition: background-color 0.4s ease, color 0.4s ease;
+  }
+
+  /* ---------- Ambient background ---------- */
+  .bg-orb{ position: fixed; border-radius:50%; filter: blur(120px); z-index:-1; transition: opacity 0.4s ease; }
+  .orb1{ width:600px; height:600px; background: var(--accent); opacity:0.06; top:-220px; right:-200px; }
+  body[data-theme="light"] .orb1{ opacity:0.10; }
+  .orb2, .orb3{ display:none; }
+  body::before{
+    content:""; position:fixed; inset:0; z-index:-2; transition: background-color 0.4s ease;
+    background: var(--bg1);
+  }
+
+  .wrap{ max-width: 900px; margin:0 auto; padding: 32px 20px 0; }
+
+  /* ---------- Glass utility ---------- */
+  .glass{
+    background: var(--glass);
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+    transition: background-color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease, transform 0.25s ease;
+  }
+
+  /* ---------- Header ---------- */
+  header.top{
+    display:flex; justify-content:space-between; align-items:center;
+    padding: 16px 22px; margin-bottom: 22px;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; }
+  .brand .mark{
+    width:34px; height:34px; border-radius:10px;
+    background: var(--accent);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:15px; color:#0F1226;
+  }
+  .brand h1{ font-family:'Space Grotesk',sans-serif; font-size:19px; font-weight:600; margin:0; letter-spacing:0.2px; }
+  .header-actions{ display:flex; align-items:center; gap:10px; }
+  .theme-toggle{
+    width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center;
+    background: rgba(255,255,255,0.04); border:1px solid var(--glass-border); cursor:pointer; font-size:15px;
+    transition: transform 0.35s cubic-bezier(.2,.9,.3,1.3), background-color 0.3s ease;
+  }
+  .theme-toggle:hover{ transform: rotate(-14deg) scale(1.06); }
+  .theme-toggle:active{ transform: scale(0.9); }
+  .status-pill{
+    font-size:11.5px; padding:5px 11px; border-radius:20px; display:flex; align-items:center; gap:6px;
+    border:1px solid var(--glass-border); color: var(--text-soft); cursor:pointer; background:rgba(255,255,255,0.04);
+    transition: border-color 0.3s ease, color 0.3s ease;
+  }
+  .status-dot{ width:7px; height:7px; border-radius:50%; background: var(--text-soft); transition: background-color 0.3s ease; }
+  .status-pill.connected .status-dot{ background: var(--green); box-shadow:0 0 6px var(--green); }
+  .status-pill.error .status-dot{ background: var(--red); box-shadow:0 0 6px var(--red); }
+  .status-pill:hover{ border-color: rgba(255,255,255,0.3); }
+
+  /* ---------- Net worth hero ---------- */
+  .hero{ padding: 26px 28px; margin-bottom: 20px; position:relative; overflow:hidden; }
+  .hero::after{
+    content:""; position:absolute; inset:0; border-radius: var(--radius);
+    background: linear-gradient(120deg, rgba(201,169,106,0.06), transparent 60%);
+    pointer-events:none;
+  }
+  .hero-label{ font-size:13px; color: var(--text-soft); position:relative; }
+  .hero-figure{
+    font-family:'JetBrains Mono',monospace; font-weight:600; font-size:42px; margin-top:4px; position:relative;
+    color: var(--text);
+    transition: transform 0.45s cubic-bezier(.2,.9,.3,1.25);
+  }
+  .hero-figure.neg{ color: var(--red); }
+  .hero-figure.settle{ transform: scale(1.035); }
+  .hero-subrow{ display:flex; gap:22px; margin-top:18px; flex-wrap:wrap; position:relative; }
+  .hero-sub{ flex:1; min-width:140px; padding: 12px 14px; border-radius: 12px; background: rgba(255,255,255,0.05); border:1px solid var(--glass-border); }
+  .hero-sub .k{ font-size:11px; color: var(--text-soft); }
+  .hero-sub .v{ font-family:'JetBrains Mono',monospace; font-weight:600; font-size:17px; margin-top:3px; }
+  .hero-sub.assets .v{ color: var(--green); }
+  .hero-sub.liab .v{ color: var(--red); }
+  .hero-sub.income .v{ color: var(--accent); }
+
+  /* ---------- Tabs ---------- */
+  nav.tabs{ display:flex; gap:6px; padding:6px; margin-bottom:22px; overflow-x:auto; }
+  nav.tabs button{
+    font-family:'Inter',sans-serif; font-weight:600; font-size:13.5px;
+    background:none; border:none; cursor:pointer; color: var(--text-soft);
+    padding:9px 16px; border-radius:12px; white-space:nowrap; transition: all 0.2s ease;
+  }
+  nav.tabs button.active{ color:#0B0B0C; background: var(--accent); transform: translateY(-1px); }
+  nav.tabs button:not(.active):hover{ color: var(--text); background: rgba(255,255,255,0.06); }
+  nav.tabs button:active{ transform: scale(0.96); }
+
+  section.panel{ display:none; }
+  section.panel.active{ display:block; animation: fadeInUp 0.4s cubic-bezier(.2,.8,.3,1); }
+  @keyframes fadeInUp{
+    from{ opacity:0; transform: translateY(10px); }
+    to{ opacity:1; transform: translateY(0); }
+  }
+  @keyframes fadeIn{ from{opacity:0;} to{opacity:1;} }
+
+  .panel-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:12px; flex-wrap:wrap; padding: 0 4px; }
+  .panel-head h2{ font-family:'Space Grotesk',sans-serif; font-size:18px; font-weight:600; margin:0; }
+  .panel-head .hint{ font-size:12.5px; color: var(--text-soft); margin-top:2px; }
+
+  .filter-bar{ display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; padding: 0 4px; }
+  .filter-bar select{
+    font-family:'Inter',sans-serif; font-size:12.5px; font-weight:500; color: var(--text-soft);
+    background: rgba(255,255,255,0.05); border:1px solid var(--glass-border); border-radius:9px;
+    padding:6px 10px; cursor:pointer;
+  }
+  .filter-bar select option{ background:#14121F; color: var(--text); }
+  .filter-bar select:focus{ outline:2px solid var(--accent); outline-offset:1px; }
+  .seg{ display:flex; gap:2px; background: rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:9px; padding:2px; }
+  .seg button{
+    font-family:'Inter',sans-serif; font-size:12.5px; font-weight:600; color: var(--text-soft);
+    background:none; border:none; border-radius:7px; padding:6px 12px; cursor:pointer;
+  }
+  .seg button.active{ background: var(--accent); color:#0B0B0C; }
+
+  button.add-btn{
+    font-family:'Inter',sans-serif; font-weight:600; font-size:13.5px;
+    background: var(--accent);
+    color:#0B0B0C; border:none; border-radius:12px; padding:10px 18px; cursor:pointer;
+    box-shadow: 0 4px 18px rgba(201,169,106,0.18);
+    transition: transform 0.15s ease, filter 0.2s ease, box-shadow 0.2s ease;
+  }
+  button.add-btn:hover{ filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 6px 22px rgba(201,169,106,0.28); }
+  button.add-btn:active{ transform: scale(0.96); }
+
+  /* ---------- Ledger-in-glass table ---------- */
+  .table-card{ padding: 6px 10px; overflow-x:auto; }
+  table.ledger{ width:100%; border-collapse: collapse; min-width: 560px; }
+  .ledger thead th{
+    text-align:left; font-size:11px; letter-spacing:0.3px; color: var(--text-soft);
+    font-weight:600; padding:12px 12px; border-bottom:1px solid var(--glass-border); text-transform:uppercase;
+  }
+  .ledger thead th.num{ text-align:right; }
+  .ledger tbody tr{ border-bottom:1px solid rgba(255,255,255,0.06); transition: background 0.15s ease, transform 0.15s ease; }
+  .ledger tbody tr:hover{ transform: translateX(2px); }
+  .ledger tbody tr:hover{ background: rgba(255,255,255,0.045); }
+  .ledger td{ padding:13px 12px; font-size:14px; vertical-align:middle; }
+  .ledger td.num{ text-align:right; font-family:'JetBrains Mono',monospace; font-weight:500; }
+  .ledger td.num.pos{ color: var(--green); }
+  .ledger td.num.neg{ color: var(--red); }
+  .sub{ font-size:11px; color: var(--text-soft); margin-top:2px; }
+
+  .tag{
+    display:inline-block; font-size:10.5px; padding:3px 10px; border-radius:20px; font-weight:600;
+    border:1px solid var(--glass-border); color: var(--text-soft); background: rgba(255,255,255,0.04);
+  }
+  .tag.active{ border-color: rgba(127,174,142,0.5); color: var(--green); background: rgba(127,174,142,0.08); }
+  .tag.closed{ border-color: rgba(255,255,255,0.2); color: var(--text-soft); }
+  .tag.achieved{ border-color: rgba(201,169,106,0.5); color: var(--accent); background: var(--accent-soft); }
+
+  .row-actions{ text-align:right; white-space:nowrap; }
+  .row-actions button{
+    background:none; border:none; cursor:pointer; color: var(--text-soft); font-size:12px; padding:4px 6px;
+  }
+  .row-actions button:hover{ color: var(--red); }
+
+  .empty{
+    padding:36px 20px; text-align:center; color: var(--text-soft); font-size:14px;
+  }
+  .empty b{ display:block; color: var(--text); font-family:'Space Grotesk',sans-serif; font-size:16px; margin-bottom:5px; font-weight:600; }
+
+  .progress-track{ background: rgba(255,255,255,0.1); height:6px; border-radius:4px; width:130px; overflow:hidden; }
+  .progress-fill{ height:100%; background: var(--accent); border-radius:4px; opacity:0.75; transition: width 0.8s cubic-bezier(.2,.8,.3,1); }
+  .progress-fill.done{ background: var(--accent); opacity:1; }
+
+  .person-split{ display:flex; gap:14px; margin-bottom:16px; flex-wrap:wrap; }
+  .split-card{ flex:1; min-width:160px; padding:16px 18px; }
+  .split-card .name{ font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:15px; }
+  .split-card .amt{ font-family:'JetBrains Mono',monospace; font-weight:700; font-size:22px; color: var(--green); margin-top:5px; }
+  .split-card .lbl{ font-size:11px; color: var(--text-soft); margin-top:3px; }
+
+  .chart-card{ padding:18px 20px; margin-bottom:20px; }
+  svg.nw-chart{ width:100%; height:160px; display:block; }
+  .chart-empty{ font-size:13px; color: var(--text-soft); padding:24px 0; text-align:center; }
+
+  /* ---------- Modal ---------- */
+  .overlay{
+    position:fixed; inset:0; background: rgba(6,8,20,0.6); backdrop-filter: blur(4px);
+    display:none; align-items:flex-start; justify-content:center; padding:40px 16px; overflow-y:auto; z-index:50;
+    animation: fadeIn 0.25s ease;
+  }
+  .overlay.open{ display:flex; }
+  .modal{ width:100%; max-width:460px; padding:24px 26px 22px; animation: modalIn 0.32s cubic-bezier(.2,.8,.3,1.15); }
+  @keyframes modalIn{
+    from{ opacity:0; transform: translateY(14px) scale(0.97); }
+    to{ opacity:1; transform: translateY(0) scale(1); }
+  }
+  .modal h3{ font-family:'Space Grotesk',sans-serif; font-size:19px; margin:0 0 16px; font-weight:600; }
+  .modal p.desc{ font-size:12.5px; color: var(--text-soft); margin-top:-10px; margin-bottom:16px; line-height:1.5; }
+  .field{ margin-bottom:12px; }
+  .field label{ display:block; font-size:12px; font-weight:600; color: var(--text-soft); margin-bottom:5px; }
+  .field input, .field select, .field textarea{
+    width:100%; padding:10px 12px; font-family:'Inter',sans-serif; font-size:14px;
+    border:1px solid var(--glass-border); border-radius:10px; background: rgba(255,255,255,0.06); color: var(--text);
+  }
+  .field textarea{ font-family:'JetBrains Mono',monospace; font-size:12.5px; min-height:110px; resize:vertical; }
+  .field input::placeholder{ color: rgba(241,238,251,0.35); }
+  .field input:focus, .field select:focus, .field textarea:focus{ outline:2px solid var(--accent); outline-offset:1px; background: rgba(255,255,255,0.09); }
+  .field select option{ background:#1B1035; color: var(--text); }
+  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:10px 12px; }
+  .modal-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:16px; }
+  .btn-secondary{
+    background:none; border:1px solid var(--glass-border); color: var(--text-soft); border-radius:10px;
+    padding:10px 16px; cursor:pointer; font-family:'Inter',sans-serif; font-weight:600; font-size:13.5px;
+    transition: transform 0.15s ease, color 0.2s ease, border-color 0.2s ease;
+  }
+  .btn-secondary:hover{ color: var(--text); border-color: rgba(255,255,255,0.35); }
+  .btn-secondary:active, .btn-primary:active{ transform: scale(0.96); }
+  .btn-primary{
+    background: var(--accent); border:none; color:#0B0B0C; border-radius:10px;
+    padding:10px 18px; cursor:pointer; font-family:'Inter',sans-serif; font-weight:700; font-size:13.5px;
+    transition: transform 0.15s ease, filter 0.2s ease;
+  }
+  .btn-primary:hover{ filter: brightness(1.08); }
+
+  .save-toast{
+    position:fixed; bottom:20px; left:50%; transform: translateX(-50%) translateY(20px);
+    color: var(--text); font-size:13px; padding:10px 20px; border-radius:20px;
+    opacity:0; transition: all 0.35s ease; pointer-events:none; z-index:60; font-family:'Inter',sans-serif;
+  }
+  .save-toast.show{ opacity:1; transform: translateX(-50%) translateY(0); }
+  .save-toast.err{ border-color: rgba(189,126,118,0.5) !important; }
+
+  .loading-line{ text-align:center; padding:70px 0; color: var(--text-soft); font-family:'JetBrains Mono',monospace; font-size:13px; }
+
+  .setup-banner{ padding:18px 20px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; border-color: rgba(251,191,36,0.35) !important; }
+  .setup-banner b{ font-family:'Space Grotesk',sans-serif; }
+  .setup-banner p{ font-size:12.5px; color: var(--text-soft); margin:4px 0 0; }
+
+  code.inline{ background: rgba(255,255,255,0.08); padding:1px 6px; border-radius:5px; font-family:'JetBrains Mono',monospace; font-size:12px; }
+
+  @media (max-width:560px){
+    .hero-figure{ font-size:32px; }
+    .grid2{ grid-template-columns:1fr; }
+  }
+  :focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+</style>
+</head>
+<body>
+
+<div class="bg-orb orb1"></div>
+<div class="bg-orb orb2"></div>
+<div class="bg-orb orb3"></div>
+
+<div class="wrap">
+  <header class="top glass">
+    <div class="brand">
+      <div class="mark">₹</div>
+      <h1>Fin Tracker</h1>
+    </div>
+    <div class="header-actions">
+      <button class="theme-toggle" id="btnExport" title="Export to Excel">⬇️</button>
+      <button class="theme-toggle" id="themeToggle" title="Switch theme">🌙</button>
+      <div class="status-pill" id="statusPill" title="Click for connection setup"><span class="status-dot"></span><span id="statusText">Not connected</span></div>
+    </div>
+  </header>
+
+  <div id="setupBanner" class="setup-banner glass" style="display:none;">
+    <div>
+      <b>Firebase not connected yet</b>
+      <p>For a permanent setup that works on every device automatically, edit the <code class="inline">FIREBASE_CONFIG</code> object near the top of this file's script and re-host it — see README.md. Pasting it here instead only saves it to this one browser.</p>
+    </div>
+    <button class="add-btn" id="btnOpenSetup">Connect just this browser</button>
+  </div>
+
+  <div class="hero glass">
+    <div class="hero-label">Net worth (assets − liabilities)</div>
+    <div class="hero-figure" id="nwFigure">₹ 0</div>
+    <div class="hero-subrow">
+      <div class="hero-sub assets"><div class="k">Total assets</div><div class="v" id="totalAssetsFig">₹ 0</div></div>
+      <div class="hero-sub liab"><div class="k">Total liabilities</div><div class="v" id="totalLiabFig">₹ 0</div></div>
+      <div class="hero-sub income"><div class="k">Income this month</div><div class="v" id="totalIncomeFig">₹ 0</div></div>
+    </div>
+  </div>
+
+  <nav class="tabs glass">
+    <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+    <button class="tab-btn" data-tab="income">Income</button>
+    <button class="tab-btn" data-tab="assets">Assets</button>
+    <button class="tab-btn" data-tab="loans">Loans</button>
+    <button class="tab-btn" data-tab="goals">Goals</button>
+  </nav>
+
+  <div id="loadingLine" class="loading-line" style="display:none;">Connecting…</div>
+
+  <!-- DASHBOARD -->
+  <section class="panel active" id="panel-dashboard">
+    <div class="chart-card glass">
+      <div class="panel-head">
+        <h2>Net worth over time</h2>
+        <button class="add-btn" id="btnAddSnapshot">+ Log month-end snapshot</button>
+      </div>
+      <div id="chartHolder"><div class="chart-empty">No monthly snapshots logged yet. Add one to start the trend line.</div></div>
+    </div>
+    <div class="panel-head"><h2>Asset mix</h2></div>
+    <div id="assetMixHolder" class="glass empty"><b>No assets logged</b>Add assets in the Assets tab to see the class-wise split.</div>
+  </section>
+
+  <!-- INCOME -->
+  <section class="panel" id="panel-income">
+    <div class="panel-head">
+      <div><h2>Income</h2><div class="hint">Logged monthly, per person</div></div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn-secondary" id="btnImportIncome" style="border-radius:12px;">Import from sheet</button>
+        <button class="add-btn" id="btnAddIncome">+ Log income</button>
+      </div>
+    </div>
+    <div class="person-split" id="personSplit"></div>
+    <div id="incomeTableHolder"></div>
+  </section>
+
+  <!-- ASSETS -->
+  <section class="panel" id="panel-assets">
+    <div class="panel-head">
+      <div><h2>Assets</h2><div class="hint">Mutual funds, FDs, gold, and more</div></div>
+      <button class="add-btn" id="btnAddAsset">+ Add asset</button>
+    </div>
+    <div class="filter-bar">
+      <select id="assetStatusFilter">
+        <option value="Active">Active only</option>
+        <option value="All">All statuses</option>
+        <option value="Closed">Closed only</option>
+      </select>
+      <select id="assetClassFilter"><option value="All">All classes</option></select>
+    </div>
+    <div id="assetsTableHolder"></div>
+  </section>
+
+  <!-- LOANS -->
+  <section class="panel" id="panel-loans">
+    <div class="panel-head">
+      <div><h2>Loans</h2><div class="hint">Outstanding liabilities and EMIs</div></div>
+      <button class="add-btn" id="btnAddLoan">+ Add loan</button>
+    </div>
+    <div class="filter-bar">
+      <select id="loanStatusFilter">
+        <option value="Active">Active only</option>
+        <option value="All">All statuses</option>
+        <option value="Closed">Closed only</option>
+      </select>
+    </div>
+    <div id="loansTableHolder"></div>
+  </section>
+
+  <!-- GOALS -->
+  <section class="panel" id="panel-goals">
+    <div class="panel-head">
+      <div><h2>Goals</h2><div class="hint">Targets you're both saving toward</div></div>
+      <button class="add-btn" id="btnAddGoal">+ Add goal</button>
+    </div>
+    <div class="filter-bar">
+      <div class="seg" id="goalStatusSeg">
+        <button data-val="Open" class="active">Open</button>
+        <button data-val="Achieved">Achieved</button>
+        <button data-val="All">All</button>
+      </div>
+    </div>
+    <div id="goalsTableHolder"></div>
+  </section>
+</div>
+
+<!-- ===== Setup modal ===== -->
+<div class="overlay" id="overlaySetup">
+  <div class="modal glass">
+    <h3>Connect Firebase (this browser only)</h3>
+    <p class="desc">
+      This saves the config only to this browser's local storage — useful for quick local testing, but it won't follow you to another device. For a permanent, works-everywhere setup, edit <code class="inline">FIREBASE_CONFIG</code> directly in the HTML file and re-host it instead (see README.md).
+    </p>
+    <form id="formSetup">
+      <div class="field">
+        <label>Firebase config (paste the JS object)</label>
+        <textarea name="config" placeholder='{
+  "apiKey": "...",
+  "authDomain": "...",
+  "projectId": "...",
+  "storageBucket": "...",
+  "messagingSenderId": "...",
+  "appId": "..."
+}' required></textarea>
+      </div>
+      <p class="desc" style="margin-top:0;">
+        Set Firestore security rules so only you two can read/write — e.g. restrict by Firebase Auth, or at minimum keep the project unlisted. Anyone with your config and open rules could read this data.
+      </p>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" data-close>Cancel</button>
+        <button type="submit" class="btn-primary">Connect</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ===== Data modals ===== -->
+
+<div class="overlay" id="overlayIncome">
+  <div class="modal glass">
+    <h3>Log income</h3>
+    <form id="formIncome">
+      <div class="grid2">
+        <div class="field"><label>Month</label><input type="month" name="month" required></div>
+        <div class="field"><label>Person</label>
+          <select name="person" required><option value="Abhilash">Abhilash</option><option value="Aakash">Aakash</option></select>
+        </div>
+        <div class="field"><label>Type</label>
+          <select name="type" required><option>Salary</option><option>Bonus</option><option>Other</option></select>
+        </div>
+        <div class="field"><label>Amount (₹)</label><input type="number" name="amount" min="0" step="1" required></div>
+      </div>
+      <div class="field"><label>Notes (optional)</label><input type="text" name="notes" placeholder="e.g. includes referral bonus"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" data-close>Cancel</button>
+        <button type="submit" class="btn-primary">Save entry</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="overlay" id="overlayAsset">
+  <div class="modal glass">
+    <h3>Add / update asset</h3>
+    <form id="formAsset">
+      <div class="field"><label>Asset name</label><input type="text" name="name" required placeholder="e.g. Quant Tax Savings"></div>
+      <div class="grid2">
+        <div class="field"><label>Product type</label><input type="text" name="productType" placeholder="Mutual Fund / FD / Gold Bond"></div>
+        <div class="field"><label>Platform</label><input type="text" name="platform" placeholder="Groww / SBI Yono"></div>
+        <div class="field"><label>Asset class</label>
+          <select name="assetClass" id="assetClassInput" required></select>
+        </div>
+        <div class="field"><label>Owner</label>
+          <select name="owner"><option value="Joint">Joint</option><option>Abhilash</option><option>Aakash</option></select>
+        </div>
+        <div class="field"><label>Principal (₹)</label><input type="number" name="principal" min="0" step="1"></div>
+        <div class="field"><label>Current value (₹)</label><input type="number" name="currentValue" min="0" step="1" required></div>
+        <div class="field"><label>Purchase date</label><input type="date" name="purchaseDate"></div>
+        <div class="field"><label>Status</label>
+          <select name="status"><option>Active</option><option>Closed</option></select>
+        </div>
+      </div>
+      <div class="field"><label>Linked goal (optional)</label>
+        <select name="goalId" id="assetGoalSelect"><option value="">— not tied to a goal —</option></select>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" data-close>Cancel</button>
+        <button type="submit" class="btn-primary">Save asset</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="overlay" id="overlayLoan">
+  <div class="modal glass">
+    <h3>Add / update loan</h3>
+    <form id="formLoan">
+      <div class="field"><label>Loan name</label><input type="text" name="loanName" required placeholder="e.g. HDFC Personal Loan"></div>
+      <div class="grid2">
+        <div class="field"><label>Borrower</label>
+          <select name="borrower"><option>Abhilash</option><option>Aakash</option><option value="Joint">Joint</option></select>
+        </div>
+        <div class="field"><label>Lender</label><input type="text" name="lender" placeholder="e.g. HDFC Bank"></div>
+        <div class="field"><label>Original amount (₹)</label><input type="number" name="originalAmount" min="0" step="1"></div>
+        <div class="field"><label>Outstanding balance (₹)</label><input type="number" name="outstandingBalance" min="0" step="1" required></div>
+        <div class="field"><label>EMI (₹/month)</label><input type="number" name="emi" min="0" step="1"></div>
+        <div class="field"><label>Interest rate (% p.a.)</label><input type="number" name="interestRate" min="0" step="0.01"></div>
+        <div class="field"><label>Start date</label><input type="date" name="startDate"></div>
+        <div class="field"><label>End date</label><input type="date" name="endDate"></div>
+      </div>
+      <div class="field"><label>Status</label>
+        <select name="status"><option>Active</option><option>Closed</option></select>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>EMI due day of month</label><input type="number" name="emiDay" min="1" max="28" placeholder="e.g. 9"></div>
+        <div class="field"><label>Auto-track monthly EMI</label>
+          <select name="autoTrack"><option value="">No — I'll log payments myself</option><option value="yes">Yes — deduct automatically each month</option></select>
+        </div>
+      </div>
+      <p class="desc" style="margin-top:0;">With auto-track on, opening this app after the due date will catch up any EMIs since your last visit — splitting each into principal and interest and reducing the balance. No manual monthly entry needed. Use "prepay / adjust" on the loan row for anything outside the regular EMI.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" data-close>Cancel</button>
+        <button type="submit" class="btn-primary">Save loan</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="overlay" id="overlayLoanAdjust">
+  <div class="modal glass">
+    <h3>Prepayment / adjustment</h3>
+    <p class="desc">Use this for anything outside the regular EMI — a lump-sum prepayment, a bank fee, an interest waiver, or a manual correction.</p>
+    <form id="formLoanAdjust">
+      <div class="field"><label>Loan</label><select name="loanId" id="adjustLoanSelect" required></select></div>
+      <div class="grid2">
+        <div class="field"><label>Date</label><input type="date" name="date" required></div>
+        <div class="field"><label>Type</label>
+          <select name="type"><option value="Prepayment">Prepayment (reduces balance)</option><option value="Adjustment-decrease">Adjustment — decrease balance</option><option value="Adjustment-increase">Adjustment — increase balance</option></select>
+        </div>
+        <div class="field"><label>Amount (₹)</label><input type="number" name="amount" min="0" step="1" required></div>
+      </div>
+      <div class="field"><label>Note (optional)</label><input type="text" name="note" placeholder="e.g. bonus prepayment, processing fee"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" data-close>Cancel</button>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="overlay" id="overlayGoal">
+  <div class="modal glass">
+    <h3>Add / update goal</h3>
+    <form id="formGoal">
+      <div class="field"><label>Goal name</label><input type="text" name="name" required placeholder="e.g. Emergency fund"></div>
+      <div class="grid2">
+        <div class="field"><label>Priority</label><input type="number" name="priority" min="1" step="0.5" value="1"></div>
+        <div class="field"><label>Type</label>
+          <select name="type"><option>OneTime</option><option>EMI</option><option>Emergency</option><option>Annual</option><option>Prepayment</option></select>
+        </div>
+        <div class="field"><label>Target date</label><input type="date" name="targetDate"></div>
+        <div class="field"><label>Status</label>
+          <select name="status"><option>In progress</option><option>Goal Achieved</option></select>
+        </div>
+        <div class="field"><label>Current amount (₹) — only if no assets are linked</label><input type="number" name="currentAmount" min="0" step="1" value="0"></div>
+        <div class="field"><label>Target amount (₹)</label><input type="number" name="targetAmount" min="0" step="1" required></div>
+      </div>
+      <p class="desc" style="margin-top:0;">Tip: add this goal first, then tag it to one or more assets in the Assets tab — the progress here will total up from those automatically.</p>
+      <div class="field"><label>Notes (optional)</label><input type="text" name="notes"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" data-close>Cancel</button>
+        <button type="submit" class="btn-primary">Save goal</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="overlay" id="overlaySnapshot">
+  <div class="modal glass">
+    <h3>Log month-end snapshot</h3>
+    <p class="desc">This is separate from your asset/loan entries — it's a point-in-time record so the trend line stays accurate even as balances change later.</p>
+    <form id="formSnapshot">
+      <div class="grid2">
+        <div class="field"><label>Month</label><input type="month" name="month" required></div>
+        <div class="field"><label>Total assets (₹)</label><input type="number" name="assets" min="0" step="1" required></div>
+        <div class="field"><label>Total liabilities (₹)</label><input type="number" name="liabilities" min="0" step="1" required></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" data-close>Cancel</button>
+        <button type="submit" class="btn-primary">Save snapshot</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="save-toast glass" id="saveToast">Saved</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const COLLECTION = 'fintracker';
+  const DOC_KEYS = ['income','assets','liabilities','goals','history','loanLedger','assetClasses'];
+  const LS_CONFIG_KEY = 'fintracker_firebase_config';
+  const LS_THEME_KEY = 'fintracker_theme';
+
+  // ---------------------------------------------------------------------
+  // FIREBASE CONFIG — fill this in ONCE before you push to GitHub, and
+  // every device/browser that opens your hosted URL connects automatically.
+  // No pasting config into the app ever again, on any device.
+  //
+  // Get these values from: Firebase Console → Project settings → General
+  // → "Your apps" → your web app → SDK setup and configuration.
+  //
+  // This is a client-side web key, not a secret — it's safe to commit to
+  // a public repo. Your actual security comes from Firestore rules, not
+  // from hiding this object. See README.md for the recommended rules.
+  // ---------------------------------------------------------------------
+  const FIREBASE_CONFIG = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+  };
+  function isConfigFilledIn(cfg){
+    return !!(cfg && cfg.apiKey && cfg.projectId &&
+      cfg.apiKey.indexOf('YOUR_') !== 0 && cfg.projectId.indexOf('YOUR_') !== 0);
+  }
+
+  // Historical income, as recorded in the previously shared Fin_master spreadsheet's
+  // Income sheet. "Other" = the sheet's Passive/P columns. Import is a manual action
+  // (button below) rather than automatic, and skips rows already present, so it's
+  // safe to click more than once and won't duplicate anything you've entered by hand.
+  const SHEET_INCOME = [
+    ['2026-01','Abhilash','Salary',67062],['2026-01','Aakash','Salary',80936],
+    ['2026-02','Abhilash','Salary',68000],['2026-02','Aakash','Salary',93291],['2026-02','Abhilash','Bonus',116825],
+    ['2026-03','Abhilash','Salary',68312],['2026-03','Aakash','Salary',94873],
+    ['2026-04','Abhilash','Salary',68312],['2026-04','Aakash','Salary',93291],
+    ['2026-05','Abhilash','Salary',68312],['2026-05','Aakash','Salary',93291],['2026-05','Aakash','Bonus',22459],
+    ['2026-06','Abhilash','Salary',68312],['2026-06','Aakash','Salary',93291],
+    ['2026-07','Abhilash','Salary',68312],['2026-07','Aakash','Salary',93291],
+    ['2026-08','Abhilash','Salary',68312],['2026-08','Aakash','Salary',93291],['2026-08','Abhilash','Bonus',8750],['2026-08','Aakash','Bonus',25828],
+    ['2025-01','Abhilash','Salary',53147],['2025-01','Aakash','Salary',32993],['2025-01','Aakash','Other',1091],
+    ['2025-02','Abhilash','Salary',146674],['2025-02','Aakash','Salary',20814],['2025-02','Aakash','Other',6027],
+    ['2025-03','Abhilash','Salary',53816],['2025-03','Aakash','Salary',281000],
+    ['2025-04','Abhilash','Salary',57238],['2025-04','Aakash','Salary',47432],
+    ['2025-05','Abhilash','Salary',47544],['2025-05','Aakash','Salary',47468],
+    ['2025-06','Abhilash','Salary',66932],['2025-06','Aakash','Salary',47468],
+    ['2025-07','Abhilash','Salary',63088],['2025-07','Aakash','Salary',47468],
+    ['2025-08','Abhilash','Salary',61838],['2025-08','Aakash','Salary',47468],
+    ['2025-09','Abhilash','Salary',63088],['2025-09','Aakash','Salary',54668],
+    ['2025-10','Abhilash','Salary',65820],['2025-10','Aakash','Salary',47468],
+    ['2025-11','Abhilash','Salary',63088],['2025-11','Aakash','Salary',50024],
+    ['2025-12','Abhilash','Salary',64454],['2025-12','Aakash','Salary',33287],
+    ['2024-01','Abhilash','Salary',53641],['2024-01','Aakash','Salary',45981],['2024-01','Aakash','Other',350],
+    ['2024-02','Abhilash','Salary',124460],['2024-02','Aakash','Salary',45981],
+    ['2024-03','Abhilash','Salary',49194],['2024-03','Aakash','Salary',45981],['2024-03','Aakash','Other',3300],
+    ['2024-04','Abhilash','Salary',53873],['2024-04','Aakash','Salary',45981],
+    ['2024-05','Abhilash','Salary',53864],['2024-05','Aakash','Salary',45981],
+    ['2024-06','Abhilash','Salary',57238],['2024-06','Aakash','Salary',174321],
+    ['2024-07','Abhilash','Salary',57238],['2024-07','Aakash','Salary',476634],
+    ['2024-08','Abhilash','Salary',55988],['2024-08','Aakash','Salary',399571],
+    ['2024-09','Abhilash','Salary',55838],['2024-09','Aakash','Salary',399571],
+    ['2024-10','Abhilash','Salary',54371],['2024-10','Aakash','Salary',399854],
+    ['2024-11','Abhilash','Salary',54355],['2024-11','Aakash','Salary',403959],
+    ['2024-12','Abhilash','Salary',54336],['2024-12','Aakash','Salary',218547],
+    ['2023-01','Abhilash','Salary',54733],['2023-01','Aakash','Salary',30762],
+    ['2023-02','Abhilash','Salary',119102],['2023-02','Aakash','Salary',30762],
+    ['2023-03','Abhilash','Salary',52983],['2023-03','Aakash','Salary',30762],
+    ['2023-04','Abhilash','Salary',53883],['2023-04','Aakash','Salary',34941],
+    ['2023-05','Abhilash','Salary',52983],['2023-05','Aakash','Salary',35241],
+    ['2023-06','Abhilash','Salary',52983],['2023-06','Aakash','Salary',35241],
+    ['2023-07','Abhilash','Salary',55983],['2023-07','Aakash','Salary',35241],
+    ['2023-08','Abhilash','Salary',51733],['2023-08','Aakash','Salary',35241],
+    ['2023-09','Abhilash','Salary',52983],['2023-09','Aakash','Salary',34941],['2023-09','Aakash','Other',5500],
+    ['2023-10','Abhilash','Salary',55983],['2023-10','Aakash','Salary',47181],
+    ['2023-11','Abhilash','Salary',52983],['2023-11','Aakash','Salary',45981],['2023-11','Aakash','Other',3250],
+    ['2023-12','Abhilash','Salary',52983],['2023-12','Aakash','Salary',45981],
+    ['2022-01','Abhilash','Salary',35537],['2022-01','Aakash','Salary',27999],
+    ['2022-02','Abhilash','Salary',61338],['2022-02','Aakash','Salary',27999],
+    ['2022-03','Abhilash','Salary',33787],['2022-03','Aakash','Salary',27999],
+    ['2022-04','Abhilash','Salary',36787],['2022-04','Aakash','Salary',27999],
+    ['2022-05','Abhilash','Salary',33787],['2022-05','Aakash','Salary',27999],
+    ['2022-06','Abhilash','Salary',33587],['2022-06','Aakash','Salary',27999],
+    ['2022-07','Abhilash','Salary',37023],['2022-07','Aakash','Salary',27999],['2022-07','Aakash','Other',4200],
+    ['2022-08','Abhilash','Salary',36365],['2022-08','Aakash','Salary',36284],
+    ['2022-09','Abhilash','Salary',35819],['2022-09','Aakash','Salary',38362],['2022-09','Aakash','Other',2600],
+    ['2022-10','Abhilash','Salary',38770],['2022-10','Aakash','Salary',38362],
+    ['2022-11','Abhilash','Salary',35868],['2022-11','Aakash','Salary',36862],
+    ['2022-12','Abhilash','Salary',35819],['2022-12','Aakash','Salary',30762],
+    ['2021-08','Abhilash','Salary',27482],['2021-08','Aakash','Salary',18117],
+    ['2021-09','Abhilash','Salary',33393],['2021-09','Aakash','Salary',26199],['2021-09','Aakash','Other',1500],
+    ['2021-10','Abhilash','Salary',35787],['2021-10','Aakash','Salary',26199],['2021-10','Abhilash','Other',4500],['2021-10','Aakash','Other',3350],
+    ['2021-11','Abhilash','Salary',38787],['2021-11','Aakash','Salary',27999],['2021-11','Aakash','Other',1350],
+    ['2021-12','Abhilash','Salary',33787],['2021-12','Aakash','Salary',27999],['2021-12','Aakash','Other',1550]
+  ];
+
+  // ---------- Theme ----------
+  function applyTheme(theme){
+    document.body.setAttribute('data-theme', theme);
+    document.getElementById('themeToggle').textContent = theme === 'light' ? '☀️' : '🌙';
+    localStorage.setItem(LS_THEME_KEY, theme);
+  }
+  document.getElementById('themeToggle').addEventListener('click', ()=>{
+    const current = document.body.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    applyTheme(current === 'light' ? 'dark' : 'light');
+  });
+  applyTheme(localStorage.getItem(LS_THEME_KEY) || 'dark');
+
+  // ---------- Export to Excel ----------
+  function exportToExcel(){
+    if(typeof XLSX === 'undefined'){ showToast('Export library failed to load — check your connection', true); return; }
+    const wb = XLSX.utils.book_new();
+
+    const summary = [{
+      'Total Assets': totalAssets(), 'Total Liabilities': totalLiabilities(),
+      'Net Worth': totalAssets() - totalLiabilities(), 'Exported On': new Date().toISOString().slice(0,10)
+    }];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), 'Summary');
+
+    const income = state.income.map(i=>({ Month: i.month, Person: i.person, Type: i.type, Amount: i.amount, Notes: i.notes||'' }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(income), 'Income');
+
+    const assets = state.assets.map(a=>({
+      Name: a.name, 'Product Type': a.productType||'', Platform: a.platform||'', 'Asset Class': a.assetClass,
+      Owner: a.owner||'', Principal: a.principal||0, 'Current Value': a.currentValue, 'Purchase Date': a.purchaseDate||'',
+      Status: a.status||'Active', 'Linked Goal': (state.goals.find(g=>g.id===a.goalId)||{}).name || ''
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(assets), 'Assets');
+
+    const loans = state.liabilities.map(l=>({
+      'Loan Name': l.loanName, Borrower: l.borrower||'', Lender: l.lender||'', 'Original Amount': l.originalAmount||0,
+      'Outstanding Balance': l.outstandingBalance, EMI: l.emi||0, 'Interest %': l.interestRate||0,
+      'Start Date': l.startDate||'', 'End Date': l.endDate||'', Status: l.status||'Active',
+      'EMI Day': l.emiDay||'', 'Auto-track': l.autoTrack ? 'Yes' : 'No'
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(loans), 'Liabilities');
+
+    const goals = state.goals.map(g=>({
+      Goal: g.name, Priority: g.priority, Type: g.type, 'Target Date': g.targetDate||'',
+      'Current Amount': goalCurrentAmount(g), 'Target Amount': g.targetAmount, Status: g.status||'In progress', Notes: g.notes||''
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(goals), 'Goals');
+
+    const history = state.history.map(h=>({ Month: h.month, Assets: h.assets, Liabilities: h.liabilities, 'Net Worth': h.assets-h.liabilities }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(history), 'NW History');
+
+    const ledger = state.loanLedger.map(e=>{
+      const loan = state.liabilities.find(l=>l.id===e.loanId);
+      return { Loan: loan ? loan.loanName : '(removed)', Date: e.date, Type: e.type, Amount: e.amount, Principal: e.principalComponent||0, Interest: e.interestComponent||0, Note: e.note||'' };
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ledger), 'Loan Ledger');
+
+    XLSX.writeFile(wb, `FinTracker_export_${new Date().toISOString().slice(0,10)}.xlsx`);
+    showToast('Excel file downloaded');
+  }
+  document.getElementById('btnExport').addEventListener('click', exportToExcel);
+
+
+  let state = { income: [], assets: [], liabilities: [], goals: [], history: [], loanLedger: [], assetClasses: [] };
+  let reconciled = false;
+  const DEFAULT_ASSET_CLASSES = ['Equity','Debt','Gold','Other'];
+  let assetFilter = { status: 'Active', cls: 'All' };
+  let loanFilterStatus = 'Active';
+  let goalFilterStatus = 'Open';
+  let db = null;
+  let unsubscribers = [];
+  let firebaseReady = false;
+
+  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+  function fmtINR(n){
+    n = Math.round(Number(n) || 0);
+    const neg = n < 0; n = Math.abs(n);
+    let s = n.toString();
+    let last3 = s.length > 3 ? s.slice(-3) : s;
+    let rest = s.length > 3 ? s.slice(0, -3) : '';
+    if (rest !== '') last3 = ',' + last3;
+    rest = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',');
+    return (neg ? '−₹ ' : '₹ ') + rest + last3;
+  }
+
+  function monthLabel(m){
+    if(!m) return '';
+    const [y,mo] = m.split('-');
+    const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return names[parseInt(mo,10)-1] + ' ' + y;
+  }
+  function dateLabel(d){
+    if(!d) return '—';
+    const dt = new Date(d);
+    if (isNaN(dt)) return d;
+    return dt.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+  }
+
+  function showToast(msg, isErr){
+    const t = document.getElementById('saveToast');
+    t.textContent = msg;
+    t.style.border = isErr ? '1px solid rgba(189,126,118,0.5)' : '1px solid rgba(255,255,255,0.1)';
+    t.classList.add('show');
+    clearTimeout(showToast._h);
+    showToast._h = setTimeout(()=> t.classList.remove('show'), 2400);
+  }
+
+  function setStatus(mode, text){
+    const pill = document.getElementById('statusPill');
+    pill.classList.remove('connected','error');
+    if(mode) pill.classList.add(mode);
+    document.getElementById('statusText').textContent = text;
+  }
+
+  // ---------- Firebase setup ----------
+  function getSavedConfig(){
+    try{ return JSON.parse(localStorage.getItem(LS_CONFIG_KEY) || 'null'); }catch(e){ return null; }
+  }
+
+  function initFirebase(config){
+    try{
+      if(!firebase.apps || firebase.apps.length === 0){
+        firebase.initializeApp(config);
+      }
+      db = firebase.firestore();
+      firebaseReady = true;
+      setStatus('connected', 'Connected');
+      document.getElementById('setupBanner').style.display = 'none';
+      subscribeAll();
+    }catch(e){
+      console.error('Firebase init failed', e);
+      setStatus('error', 'Config error');
+      showToast('Could not connect — check your Firebase config', true);
+      document.getElementById('setupBanner').style.display = 'flex';
+    }
+  }
+
+  function subscribeAll(){
+    unsubscribers.forEach(u=>u());
+    unsubscribers = [];
+    document.getElementById('loadingLine').style.display = 'block';
+    const loadedKeys = new Set();
+    DOC_KEYS.forEach(key=>{
+      const unsub = db.collection(COLLECTION).doc(key).onSnapshot(
+        (snap)=>{
+          const data = snap.exists ? snap.data() : {};
+          state[key] = Array.isArray(data.items) ? data.items : [];
+          loadedKeys.add(key);
+          if(loadedKeys.size >= DOC_KEYS.length){
+            document.getElementById('loadingLine').style.display = 'none';
+            reconcileLoans();
+            seedAssetClasses();
+          }
+          render();
+        },
+        (err)=>{
+          console.error('Snapshot error on '+key, err);
+          setStatus('error', 'Sync error');
+          showToast('Sync error — check Firestore rules/connection', true);
+        }
+      );
+      unsubscribers.push(unsub);
+    });
+  }
+
+  async function persist(k){
+    if(!firebaseReady){
+      showToast('Not connected — set up Firebase first', true);
+      openModal('overlaySetup');
+      return;
+    }
+    try{
+      await db.collection(COLLECTION).doc(k).set({ items: state[k], updatedAt: Date.now() });
+      showToast('Saved');
+    }catch(e){
+      console.error('Save failed', e);
+      showToast('Save failed — check connection and try again', true);
+    }
+  }
+
+  // ---------- Setup modal ----------
+  document.getElementById('statusPill').addEventListener('click', ()=> openModal('overlaySetup'));
+  document.getElementById('btnOpenSetup').addEventListener('click', ()=> openModal('overlaySetup'));
+  document.getElementById('formSetup').addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const raw = new FormData(e.target).get('config');
+    let parsed;
+    try{ parsed = JSON.parse(raw); }
+    catch(err){ showToast('That doesn\'t look like valid JSON', true); return; }
+    if(!parsed.projectId || !parsed.apiKey){ showToast('Config looks incomplete', true); return; }
+    localStorage.setItem(LS_CONFIG_KEY, JSON.stringify(parsed));
+    closeModal('overlaySetup');
+    setStatus(null, 'Connecting…');
+    initFirebase(parsed);
+  });
+
+  // ---------- Tabs ----------
+  document.querySelectorAll('.tab-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('panel-'+btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // ---------- Modal helpers ----------
+  function openModal(id){ document.getElementById(id).classList.add('open'); }
+  function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+  document.querySelectorAll('[data-close]').forEach(b=>{
+    b.addEventListener('click', ()=> { b.closest('.overlay').classList.remove('open'); resetEditModals(); });
+  });
+  document.querySelectorAll('.overlay').forEach(ov=>{
+    ov.addEventListener('click', (e)=>{ if(e.target === ov){ ov.classList.remove('open'); resetEditModals(); } });
+  });
+
+  document.getElementById('btnAddIncome').addEventListener('click', ()=> {
+    resetEditModals();
+    document.getElementById('formIncome').reset();
+    document.querySelector('#formIncome [name=month]').value = currentMonthKey();
+    openModal('overlayIncome');
+  });
+  document.getElementById('btnImportIncome').addEventListener('click', async ()=>{
+    if(!firebaseReady){ showToast('Connect Firebase first', true); openModal('overlaySetup'); return; }
+    const existing = new Set(state.income.map(i=> [i.month,i.person,i.type,i.amount].join('|')));
+    let added = 0;
+    SHEET_INCOME.forEach(([month,person,type,amount])=>{
+      const key = [month,person,type,amount].join('|');
+      if(existing.has(key)) return;
+      state.income.push({ id: uid(), month, person, type, amount, notes: 'Imported from Fin_master sheet' });
+      added++;
+    });
+    if(added > 0){
+      await persist('income');
+      showToast(`Imported ${added} income entr${added===1?'y':'ies'} from your sheet`);
+    } else {
+      showToast('Already up to date — nothing new to import');
+    }
+  });
+  document.getElementById('btnAddAsset').addEventListener('click', ()=> {
+    resetEditModals();
+    document.getElementById('formAsset').reset();
+    populateGoalSelect(); populateAssetClassSelect(); openModal('overlayAsset');
+  });
+  document.getElementById('btnAddLoan').addEventListener('click', ()=> {
+    resetEditModals();
+    document.getElementById('formLoan').reset();
+    openModal('overlayLoan');
+  });
+  document.getElementById('btnAddGoal').addEventListener('click', ()=> {
+    resetEditModals();
+    document.getElementById('formGoal').reset();
+    openModal('overlayGoal');
+  });
+  document.getElementById('btnAddSnapshot').addEventListener('click', ()=> openModal('overlaySnapshot'));
+
+  // ---------- Form submits ----------
+  let editState = { income:null, assets:null, liabilities:null, goals:null };
+
+  function fillForm(formEl, data){
+    Array.from(formEl.elements).forEach(el=>{
+      if(!el.name || data[el.name] === undefined || data[el.name] === null) return;
+      el.value = data[el.name];
+    });
+  }
+
+  function resetEditModals(){
+    editState = { income:null, assets:null, liabilities:null, goals:null };
+    document.querySelector('#overlayIncome h3').textContent = 'Log income';
+    document.querySelector('#formIncome button[type=submit]').textContent = 'Save entry';
+    document.querySelector('#overlayAsset h3').textContent = 'Add / update asset';
+    document.querySelector('#formAsset button[type=submit]').textContent = 'Save asset';
+    document.querySelector('#overlayLoan h3').textContent = 'Add / update loan';
+    document.querySelector('#formLoan button[type=submit]').textContent = 'Save loan';
+    document.querySelector('#overlayGoal h3').textContent = 'Add / update goal';
+    document.querySelector('#formGoal button[type=submit]').textContent = 'Save goal';
+  }
+
+  function openIncomeEdit(item){
+    editState.income = item.id;
+    fillForm(document.getElementById('formIncome'), item);
+    document.querySelector('#overlayIncome h3').textContent = 'Edit income entry';
+    document.querySelector('#formIncome button[type=submit]').textContent = 'Update entry';
+    openModal('overlayIncome');
+  }
+  function openAssetEdit(item){
+    editState.assets = item.id;
+    populateGoalSelect();
+    populateAssetClassSelect();
+    fillForm(document.getElementById('formAsset'), item);
+    document.getElementById('assetGoalSelect').value = item.goalId || '';
+    document.getElementById('assetClassInput').value = item.assetClass || '';
+    document.querySelector('#overlayAsset h3').textContent = 'Edit asset';
+    document.querySelector('#formAsset button[type=submit]').textContent = 'Update asset';
+    openModal('overlayAsset');
+  }
+  function openLoanEdit(item){
+    editState.liabilities = item.id;
+    const form = document.getElementById('formLoan');
+    fillForm(form, item);
+    form.querySelector('[name=autoTrack]').value = item.autoTrack ? 'yes' : '';
+    document.querySelector('#overlayLoan h3').textContent = 'Edit loan';
+    document.querySelector('#formLoan button[type=submit]').textContent = 'Update loan';
+    openModal('overlayLoan');
+  }
+  function openGoalEdit(item){
+    editState.goals = item.id;
+    fillForm(document.getElementById('formGoal'), item);
+    document.querySelector('#overlayGoal h3').textContent = 'Edit goal';
+    document.querySelector('#formGoal button[type=submit]').textContent = 'Update goal';
+    openModal('overlayGoal');
+  }
+
+  document.addEventListener('click', (e)=>{
+    const btn = e.target.closest('[data-edit]');
+    if(!btn) return;
+    const [coll, id] = btn.dataset.edit.split('::');
+    const item = state[coll] && state[coll].find(x=>x.id===id);
+    if(!item){ showToast('Entry not found — it may have been removed', true); return; }
+    if(coll==='income') openIncomeEdit(item);
+    else if(coll==='assets') openAssetEdit(item);
+    else if(coll==='liabilities') openLoanEdit(item);
+    else if(coll==='goals') openGoalEdit(item);
+  });
+
+  document.getElementById('formIncome').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const values = { month: f.get('month'), person: f.get('person'), type: f.get('type'), amount: Number(f.get('amount')), notes: f.get('notes')||'' };
+    if(editState.income){
+      const idx = state.income.findIndex(x=>x.id===editState.income);
+      if(idx>=0) state.income[idx] = Object.assign({}, state.income[idx], values);
+    } else {
+      state.income.push(Object.assign({ id: uid() }, values));
+    }
+    await persist('income');
+    e.target.reset();
+    resetEditModals();
+    closeModal('overlayIncome');
+  });
+
+  document.getElementById('formAsset').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const values = {
+      name: f.get('name'), productType: f.get('productType'), platform: f.get('platform'),
+      assetClass: f.get('assetClass'), owner: f.get('owner'), principal: Number(f.get('principal')||0),
+      currentValue: Number(f.get('currentValue')), purchaseDate: f.get('purchaseDate'), status: f.get('status'),
+      goalId: f.get('goalId') || ''
+    };
+    if(editState.assets){
+      const idx = state.assets.findIndex(x=>x.id===editState.assets);
+      if(idx>=0) state.assets[idx] = Object.assign({}, state.assets[idx], values);
+    } else {
+      state.assets.push(Object.assign({ id: uid() }, values));
+    }
+    await persist('assets');
+    e.target.reset();
+    resetEditModals();
+    closeModal('overlayAsset');
+  });
+
+  document.getElementById('formLoan').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const autoTrack = f.get('autoTrack') === 'yes';
+    if(editState.liabilities){
+      const idx = state.liabilities.findIndex(x=>x.id===editState.liabilities);
+      if(idx>=0){
+        const existing = state.liabilities[idx];
+        state.liabilities[idx] = Object.assign({}, existing, {
+          loanName: f.get('loanName'), borrower: f.get('borrower'), lender: f.get('lender'),
+          originalAmount: Number(f.get('originalAmount')||0), outstandingBalance: Number(f.get('outstandingBalance')),
+          emi: Number(f.get('emi')||0), interestRate: Number(f.get('interestRate')||0),
+          startDate: f.get('startDate'), endDate: f.get('endDate'), status: f.get('status'),
+          emiDay: f.get('emiDay') ? Number(f.get('emiDay')) : null,
+          autoTrack: autoTrack,
+          // keep existing accrual progress — only reset it if auto-track was just turned on for the first time
+          lastAccrualDate: autoTrack ? (existing.lastAccrualDate || f.get('startDate')) : existing.lastAccrualDate
+        });
+      }
+    } else {
+      state.liabilities.push({
+        id: uid(), loanName: f.get('loanName'), borrower: f.get('borrower'), lender: f.get('lender'),
+        originalAmount: Number(f.get('originalAmount')||0), outstandingBalance: Number(f.get('outstandingBalance')),
+        emi: Number(f.get('emi')||0), interestRate: Number(f.get('interestRate')||0),
+        startDate: f.get('startDate'), endDate: f.get('endDate'), status: f.get('status'),
+        emiDay: f.get('emiDay') ? Number(f.get('emiDay')) : null,
+        autoTrack: autoTrack,
+        lastAccrualDate: autoTrack ? f.get('startDate') : ''
+      });
+    }
+    await persist('liabilities');
+    e.target.reset();
+    resetEditModals();
+    closeModal('overlayLoan');
+  });
+
+  document.getElementById('formLoanAdjust').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const loanId = f.get('loanId');
+    const loan = state.liabilities.find(l=>l.id===loanId);
+    if(!loan){ showToast('Loan not found', true); return; }
+    const type = f.get('type');
+    const amount = Number(f.get('amount'));
+    const date = f.get('date');
+    const note = f.get('note')||'';
+    let delta;
+    let logType;
+    if(type==='Prepayment'){ delta = -amount; logType='Prepayment'; }
+    else if(type==='Adjustment-increase'){ delta = amount; logType='Adjustment'; }
+    else { delta = -amount; logType='Adjustment'; }
+    loan.outstandingBalance = Math.max(0, Math.round(Number(loan.outstandingBalance||0) + delta));
+    if(loan.outstandingBalance <= 0) loan.status = 'Closed';
+    state.loanLedger.push({ id: uid(), loanId, date, type: logType, amount: delta, principalComponent: 0, interestComponent: 0, note });
+    await persist('liabilities');
+    await persist('loanLedger');
+    e.target.reset();
+    closeModal('overlayLoanAdjust');
+  });
+
+  document.addEventListener('click', (e)=>{
+    const btn = e.target.closest('[data-adjust-loan]');
+    if(!btn) return;
+    const loanId = btn.dataset.adjustLoan;
+    populateLoanSelect(loanId);
+    document.querySelector('#formLoanAdjust [name=date]').value = new Date().toISOString().slice(0,10);
+    openModal('overlayLoanAdjust');
+  });
+
+  document.getElementById('formGoal').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const values = {
+      name: f.get('name'), priority: Number(f.get('priority')||1), type: f.get('type'),
+      targetDate: f.get('targetDate'), status: f.get('status'),
+      currentAmount: Number(f.get('currentAmount')||0), targetAmount: Number(f.get('targetAmount')),
+      notes: f.get('notes')||''
+    };
+    if(editState.goals){
+      const idx = state.goals.findIndex(x=>x.id===editState.goals);
+      if(idx>=0) state.goals[idx] = Object.assign({}, state.goals[idx], values);
+    } else {
+      state.goals.push(Object.assign({ id: uid() }, values));
+    }
+    await persist('goals');
+    e.target.reset();
+    resetEditModals();
+    closeModal('overlayGoal');
+  });
+
+  document.getElementById('formSnapshot').addEventListener('submit', async (e)=>{
+
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const month = f.get('month');
+    const assets = Number(f.get('assets'));
+    const liabilities = Number(f.get('liabilities'));
+    const existingIdx = state.history.findIndex(h=>h.month===month);
+    const entry = { id: existingIdx>=0 ? state.history[existingIdx].id : uid(), month, assets, liabilities };
+    if(existingIdx>=0) state.history[existingIdx] = entry; else state.history.push(entry);
+    state.history.sort((a,b)=> a.month.localeCompare(b.month));
+    await persist('history');
+    e.target.reset();
+    closeModal('overlaySnapshot');
+  });
+
+  // ---------- Delete handlers ----------
+  document.addEventListener('click', async (e)=>{
+    const btn = e.target.closest('[data-delete]');
+    if(!btn) return;
+    const [coll, id] = btn.dataset.delete.split('::');
+    if(!confirm('Remove this entry?')) return;
+    state[coll] = state[coll].filter(x=>x.id!==id);
+    await persist(coll);
+  });
+
+  // ---------- Computations ----------
+  function totalAssets(){ return state.assets.filter(a=>a.status!=='Closed').reduce((s,a)=>s+(Number(a.currentValue)||0),0); }
+  function totalLiabilities(){ return state.liabilities.filter(l=>l.status!=='Closed').reduce((s,l)=>s+(Number(l.outstandingBalance)||0),0); }
+  function currentMonthKey(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+  function totalIncomeThisMonth(){
+    const m = currentMonthKey();
+    return state.income.filter(i=>i.month===m).reduce((s,i)=>s+(Number(i.amount)||0),0);
+  }
+
+  function animateNumber(el, endValue){
+    const start = Number(el.dataset.raw || 0);
+    const end = Number(endValue) || 0;
+    el.dataset.raw = end;
+    if(Math.abs(end-start) < 1){ el.textContent = fmtINR(end); return; }
+    const duration = 550;
+    const startTime = performance.now();
+    function tick(now){
+      const p = Math.min(1, (now-startTime)/duration);
+      const eased = 1 - Math.pow(1-p, 3);
+      el.textContent = fmtINR(start + (end-start)*eased);
+      if(p < 1) requestAnimationFrame(tick);
+      else el.textContent = fmtINR(end);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function renderStamp(){
+    const assets = totalAssets(), liab = totalLiabilities(), nw = assets - liab;
+    const fig = document.getElementById('nwFigure');
+    fig.classList.toggle('neg', nw<0);
+    fig.classList.add('settle');
+    setTimeout(()=>fig.classList.remove('settle'), 500);
+    animateNumber(fig, nw);
+    animateNumber(document.getElementById('totalAssetsFig'), assets);
+    animateNumber(document.getElementById('totalLiabFig'), liab);
+    animateNumber(document.getElementById('totalIncomeFig'), totalIncomeThisMonth());
+  }
+
+  function renderIncome(){
+    const people = ['Abhilash','Aakash'];
+    const m = currentMonthKey();
+    document.getElementById('personSplit').innerHTML = people.map(p=>{
+      const amt = state.income.filter(i=>i.person===p && i.month===m).reduce((s,i)=>s+Number(i.amount||0),0);
+      return `<div class="split-card glass"><div class="name">${p}</div><div class="amt">${fmtINR(amt)}</div><div class="lbl">This month</div></div>`;
+    }).join('');
+
+    const rows = [...state.income].sort((a,b)=> b.month.localeCompare(a.month));
+    const holder = document.getElementById('incomeTableHolder');
+    if(rows.length===0){
+      holder.innerHTML = `<div class="glass empty"><b>No income logged yet</b>Log your first monthly entry to start the ledger.</div>`;
+      return;
+    }
+    holder.innerHTML = `<div class="glass table-card"><table class="ledger"><thead><tr>
+      <th>Month</th><th>Person</th><th>Type</th><th>Notes</th><th class="num">Amount</th><th></th>
+      </tr></thead><tbody>
+      ${rows.map(r=>`<tr>
+        <td>${monthLabel(r.month)}</td><td>${r.person}</td><td>${r.type}</td><td>${r.notes||'—'}</td>
+        <td class="num pos">${fmtINR(r.amount)}</td>
+        <td class="row-actions"><button data-edit="income::${r.id}">edit</button> <button data-delete="income::${r.id}">remove</button></td>
+      </tr>`).join('')}
+      </tbody></table></div>`;
+  }
+
+  function renderAssets(){
+    populateAssetClassFilter();
+    const holder = document.getElementById('assetsTableHolder');
+    let rows = [...state.assets].sort((a,b)=> (b.currentValue||0)-(a.currentValue||0));
+    if(assetFilter.status !== 'All') rows = rows.filter(a=> (a.status||'Active') === assetFilter.status);
+    if(assetFilter.cls !== 'All') rows = rows.filter(a=> a.assetClass === assetFilter.cls);
+    if(rows.length===0){
+      const noneMatch = state.assets.length>0;
+      holder.innerHTML = noneMatch
+        ? `<div class="glass empty"><b>No assets match this filter</b>Try switching the status or class filter above.</div>`
+        : `<div class="glass empty"><b>No assets logged yet</b>Add mutual funds, FDs, gold, or other holdings to track combined net worth.</div>`;
+    } else {
+      const goalName = (id)=> { const g = state.goals.find(x=>x.id===id); return g ? g.name : ''; };
+      holder.innerHTML = `<div class="glass table-card"><table class="ledger"><thead><tr>
+        <th>Name</th><th>Class</th><th>Owner</th><th>Platform</th><th>Goal</th><th class="num">Principal</th><th class="num">Current value</th><th></th><th></th>
+        </tr></thead><tbody>
+        ${rows.map(a=>`<tr>
+          <td>${a.name}${a.productType?`<div class="sub">${a.productType}</div>`:''}</td>
+          <td>${a.assetClass}</td><td>${a.owner||'—'}</td><td>${a.platform||'—'}</td>
+          <td>${a.goalId ? `<span class="tag active">${goalName(a.goalId) || 'goal removed'}</span>` : '<span class="sub">—</span>'}</td>
+          <td class="num">${a.principal?fmtINR(a.principal):'—'}</td>
+          <td class="num pos">${fmtINR(a.currentValue)}</td>
+          <td><span class="tag ${a.status==='Active'?'active':'closed'}">${a.status||'Active'}</span></td>
+          <td class="row-actions"><button data-edit="assets::${a.id}">edit</button> <button data-delete="assets::${a.id}">remove</button></td>
+        </tr>`).join('')}
+        </tbody></table></div>`;
+    }
+    renderDashboard();
+  }
+
+  // ---------- Auto EMI reconciliation ----------
+  // Runs once per page load, right after all Firestore data has arrived.
+  // For every loan with auto-tracking on, catches up any EMI cycles that
+  // passed since the last check — splits each into principal/interest
+  // (reducing-balance method) and logs it, so no manual monthly entry is needed.
+  function reconcileLoans(){
+    if(!firebaseReady || reconciled) return;
+    reconciled = true;
+    let changed = false;
+    const today = new Date();
+    state.liabilities.forEach(loan=>{
+      if(loan.status==='Closed' || !loan.autoTrack || !loan.emiDay) return;
+      let outstanding = Number(loan.outstandingBalance||0);
+      if(outstanding<=0) return;
+      const anchor = loan.lastAccrualDate || loan.startDate;
+      if(!anchor) return;
+      let last = new Date(anchor);
+      let cursor = new Date(last.getFullYear(), last.getMonth(), Number(loan.emiDay));
+      if(cursor <= last) cursor = new Date(cursor.getFullYear(), cursor.getMonth()+1, Number(loan.emiDay));
+      const rate = Number(loan.interestRate||0)/12/100;
+      const emi = Number(loan.emi||0);
+      let iterations = 0;
+      let loanChanged = false;
+      while(cursor <= today && outstanding>0 && iterations<36){
+        const interestComp = outstanding * rate;
+        let principalComp = emi - interestComp;
+        if(principalComp < 0) principalComp = 0;
+        if(principalComp > outstanding) principalComp = outstanding;
+        outstanding = Math.max(0, outstanding - principalComp);
+        state.loanLedger.push({
+          id: uid(), loanId: loan.id, date: cursor.toISOString().slice(0,10), type:'EMI',
+          amount: emi, principalComponent: Math.round(principalComp), interestComponent: Math.round(interestComp), note:''
+        });
+        last = new Date(cursor);
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth()+1, Number(loan.emiDay));
+        iterations++;
+        loanChanged = true;
+      }
+      if(loanChanged){
+        loan.outstandingBalance = Math.round(outstanding);
+        loan.lastAccrualDate = last.toISOString().slice(0,10);
+        if(outstanding<=0) loan.status = 'Closed';
+        changed = true;
+      }
+    });
+    if(changed){
+      persist('liabilities');
+      persist('loanLedger');
+      showToast(`Caught up ${state.loanLedger.length ? 'EMI history' : ''}`.trim() || 'Loans updated');
+    }
+  }
+
+  function loanLedgerFor(loanId){
+    return state.loanLedger.filter(x=>x.loanId===loanId).sort((a,b)=> b.date.localeCompare(a.date));
+  }
+
+  function nextEmiDate(loan){
+    const anchor = loan.lastAccrualDate || loan.startDate;
+    if(!anchor || !loan.emiDay) return null;
+    const last = new Date(anchor);
+    let cursor = new Date(last.getFullYear(), last.getMonth(), Number(loan.emiDay));
+    if(cursor <= last) cursor = new Date(cursor.getFullYear(), cursor.getMonth()+1, Number(loan.emiDay));
+    return cursor;
+  }
+
+  function populateLoanSelect(preselectId){
+    const sel = document.getElementById('adjustLoanSelect');
+    sel.innerHTML = state.liabilities.filter(l=>l.status!=='Closed').map(l=>`<option value="${l.id}">${l.loanName}</option>`).join('');
+    if(preselectId) sel.value = preselectId;
+  }
+
+  function renderLoans(){
+    const holder = document.getElementById('loansTableHolder');
+    let rows = [...state.liabilities].sort((a,b)=> (b.outstandingBalance||0)-(a.outstandingBalance||0));
+    if(loanFilterStatus !== 'All') rows = rows.filter(l=> (l.status||'Active') === loanFilterStatus);
+    if(rows.length===0){
+      const noneMatch = state.liabilities.length>0;
+      holder.innerHTML = noneMatch
+        ? `<div class="glass empty"><b>No loans match this filter</b>Try switching the status filter above.</div>`
+        : `<div class="glass empty"><b>No loans logged yet</b>Add a loan to track EMIs and outstanding balance alongside your assets.</div>`;
+      return;
+    }
+    holder.innerHTML = `<div class="glass table-card"><table class="ledger"><thead><tr>
+      <th>Loan</th><th>Borrower</th><th>Lender</th><th class="num">EMI</th><th class="num">Interest</th><th class="num">Outstanding</th><th></th><th></th><th></th>
+      </tr></thead><tbody>
+      ${rows.map(l=>{
+        const ledger = loanLedgerFor(l.id).slice(0,4);
+        const next = l.status!=='Closed' ? nextEmiDate(l) : null;
+        const ledgerHTML = ledger.length>0
+          ? `<div class="sub" style="margin-top:6px;line-height:1.6;">${ledger.map(e=>{
+              if(e.type==='EMI') return `${dateLabel(e.date)} · EMI ${fmtINR(e.amount)} (₹${e.principalComponent.toLocaleString('en-IN')} principal)`;
+              return `${dateLabel(e.date)} · ${e.type} ${fmtINR(Math.abs(e.amount))}${e.note?' — '+e.note:''}`;
+            }).join('<br>')}</div>`
+          : '';
+        return `<tr>
+        <td>${l.loanName}${l.endDate?`<div class="sub">ends ${dateLabel(l.endDate)}</div>`:''}${l.autoTrack && next?`<div class="sub">next EMI ${dateLabel(next.toISOString().slice(0,10))}</div>`:''}${ledgerHTML}</td>
+        <td>${l.borrower||'—'}</td><td>${l.lender||'—'}</td>
+        <td class="num">${l.emi?fmtINR(l.emi):'—'}</td>
+        <td class="num">${l.interestRate?l.interestRate+'%':'—'}</td>
+        <td class="num neg">${fmtINR(l.outstandingBalance)}</td>
+        <td><span class="tag ${l.status==='Active'?'active':'closed'}">${l.status||'Active'}</span></td>
+        <td class="row-actions">${l.status!=='Closed'?`<button data-adjust-loan="${l.id}">prepay / adjust</button>`:''}</td>
+        <td class="row-actions"><button data-edit="liabilities::${l.id}">edit</button> <button data-delete="liabilities::${l.id}">remove</button></td>
+      </tr>`;}).join('')}
+      </tbody></table></div>`;
+  }
+
+
+  function linkedAssetsFor(goalId){
+    return state.assets.filter(a=>a.goalId===goalId);
+  }
+  function goalCurrentAmount(g){
+    const linked = linkedAssetsFor(g.id).filter(a=>a.status!=='Closed');
+    if(linked.length>0) return linked.reduce((s,a)=>s+Number(a.currentValue||0),0);
+    return Number(g.currentAmount||0);
+  }
+
+  function renderGoals(){
+    const holder = document.getElementById('goalsTableHolder');
+    let rows = [...state.goals].sort((a,b)=> (a.priority||1)-(b.priority||1));
+    rows = rows.map(g=>{
+      const current = goalCurrentAmount(g);
+      const pct = g.targetAmount>0 ? Math.min(100, Math.round((current/g.targetAmount)*100)) : 0;
+      const achieved = g.status === 'Goal Achieved' || pct>=100;
+      return Object.assign({}, g, { _current: current, _pct: pct, _achieved: achieved });
+    });
+    if(goalFilterStatus === 'Open') rows = rows.filter(g=>!g._achieved);
+    else if(goalFilterStatus === 'Achieved') rows = rows.filter(g=>g._achieved);
+    if(rows.length===0){
+      const noneAtAll = state.goals.length===0;
+      holder.innerHTML = noneAtAll
+        ? `<div class="glass empty"><b>No goals logged yet</b>Add a target — emergency fund, insurance, loan prepayment — and track progress together.</div>`
+        : `<div class="glass empty"><b>Nothing here</b>${goalFilterStatus==='Open' ? 'No open goals — check the Achieved tab, or add a new one.' : 'No achieved goals yet.'}</div>`;
+      return;
+    }
+    holder.innerHTML = `<div class="glass table-card"><table class="ledger"><thead><tr>
+      <th>Goal</th><th>Type</th><th>Target date</th><th>Progress</th><th class="num">Remaining</th><th></th><th></th>
+      </tr></thead><tbody>
+      ${rows.map(g=>{
+        const linked = linkedAssetsFor(g.id);
+        const current = g._current, pct = g._pct, achieved = g._achieved;
+        const remaining = Math.max(0, (g.targetAmount||0)-current);
+        const linkedList = linked.length>0
+          ? `<div class="sub" style="margin-top:6px;line-height:1.6;">${linked.map(a=>`${a.status==='Closed'?'<s>':''}${a.name} — ${fmtINR(a.currentValue)}${a.status==='Closed'?'</s>':''}`).join('<br>')}</div>`
+          : '';
+        return `<tr>
+          <td>${g.name}${g.notes?`<div class="sub">${g.notes}</div>`:''}${linkedList}</td>
+          <td>${g.type}</td><td>${dateLabel(g.targetDate)}</td>
+          <td>
+            <div class="progress-track"><div class="progress-fill ${achieved?'done':''}" style="width:${pct}%"></div></div>
+            <div class="sub" style="margin-top:3px;">${fmtINR(current)} of ${fmtINR(g.targetAmount)}${linked.length>0?` · from ${linked.length} linked asset${linked.length>1?'s':''}`:''}</div>
+          </td>
+          <td class="num ${achieved?'':'neg'}">${achieved?'—':fmtINR(remaining)}</td>
+          <td><span class="tag ${achieved?'achieved':'active'}">${achieved?'Achieved':'In progress'}</span></td>
+          <td class="row-actions"><button data-edit="goals::${g.id}">edit</button> <button data-delete="goals::${g.id}">remove</button></td>
+        </tr>`;
+      }).join('')}
+      </tbody></table></div>`;
+  }
+
+  function renderDashboard(){
+    const chartHolder = document.getElementById('chartHolder');
+    const hist = [...state.history].sort((a,b)=>a.month.localeCompare(b.month));
+    if(hist.length===0){
+      chartHolder.innerHTML = `<div class="chart-empty">No monthly snapshots logged yet. Add one to start the trend line.</div>`;
+    } else {
+      const W = 820, H = 150, pad = 30;
+      const nwVals = hist.map(h=>h.assets-h.liabilities);
+      const min = Math.min(0, ...nwVals), max = Math.max(0, ...nwVals);
+      const range = (max-min) || 1;
+      const stepX = hist.length>1 ? (W-2*pad)/(hist.length-1) : 0;
+      const pts = nwVals.map((v,i)=>{
+        const x = pad + stepX*i;
+        const y = H-pad - ((v-min)/range)*(H-2*pad);
+        return [x,y];
+      });
+      const zeroY = H-pad - ((0-min)/range)*(H-2*pad);
+      const path = pts.map((p,i)=> (i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+      const areaPath = path + ` L${pts[pts.length-1][0].toFixed(1)},${(H-pad).toFixed(1)} L${pts[0][0].toFixed(1)},${(H-pad).toFixed(1)} Z`;
+      const dots = pts.map((p,i)=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3.5" fill="${nwVals[i]>=0?'#7FAE8E':'#BD7E76'}" stroke="rgba(255,255,255,0.4)" stroke-width="1"><title>${monthLabel(hist[i].month)}: ${fmtINR(nwVals[i])}</title></circle>`).join('');
+      const labels = hist.map((h,i)=> i===0||i===hist.length-1||hist.length<6 ? `<text x="${pts[i][0].toFixed(1)}" y="${H-8}" font-size="10" fill="#A9A6C4" text-anchor="middle" font-family="JetBrains Mono, monospace">${monthLabel(h.month)}</text>` : '').join('');
+      chartHolder.innerHTML = `<svg class="nw-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#C9A96A" stop-opacity="0.22"/>
+            <stop offset="100%" stop-color="#C9A96A" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d="${areaPath}" fill="url(#areaGrad)" stroke="none"/>
+        <line x1="${pad}" y1="${zeroY.toFixed(1)}" x2="${W-pad}" y2="${zeroY.toFixed(1)}" stroke="rgba(255,255,255,0.14)" stroke-dasharray="3,3"/>
+        <path d="${path}" fill="none" stroke="#C9A96A" stroke-width="2"/>
+        ${dots}
+        ${labels}
+      </svg>`;
+    }
+
+    const mixHolder = document.getElementById('assetMixHolder');
+    const active = state.assets.filter(a=>a.status!=='Closed');
+    if(active.length===0){
+      mixHolder.className = 'glass empty';
+      mixHolder.innerHTML = `<b>No assets logged</b>Add assets in the Assets tab to see the class-wise split.`;
+      return;
+    }
+    const classes = {};
+    active.forEach(a=>{ classes[a.assetClass] = (classes[a.assetClass]||0) + Number(a.currentValue||0); });
+    const total = Object.values(classes).reduce((a,b)=>a+b,0) || 1;
+    mixHolder.className = 'glass table-card';
+    mixHolder.innerHTML = `<table class="ledger"><thead><tr><th>Class</th><th class="num">Value</th><th class="num">Share</th></tr></thead><tbody>
+      ${Object.entries(classes).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<tr>
+        <td>${k}</td><td class="num pos">${fmtINR(v)}</td><td class="num">${((v/total)*100).toFixed(1)}%</td>
+      </tr>`).join('')}
+      </tbody></table>`;
+  }
+
+  function populateGoalSelect(){
+    const sel = document.getElementById('assetGoalSelect');
+    const current = sel.value;
+    const options = ['<option value="">— not tied to a goal —</option>']
+      .concat(state.goals.map(g=>`<option value="${g.id}">${g.name}</option>`));
+    sel.innerHTML = options.join('');
+    if(current) sel.value = current;
+  }
+
+  // ---------- Asset classes (user-extensible) ----------
+  function assetClassList(){
+    return state.assetClasses && state.assetClasses.length ? state.assetClasses : DEFAULT_ASSET_CLASSES;
+  }
+
+  async function seedAssetClasses(){
+    if(!state.assetClasses || state.assetClasses.length === 0){
+      state.assetClasses = DEFAULT_ASSET_CLASSES.slice();
+      await persist('assetClasses');
+    }
+  }
+
+  function populateAssetClassSelect(){
+    const sel = document.getElementById('assetClassInput');
+    const current = sel.value;
+    const options = assetClassList().map(c=>`<option>${c}</option>`)
+      .concat(['<option value="__add_new__">+ Add new class…</option>']);
+    sel.innerHTML = options.join('');
+    if(current && assetClassList().includes(current)) sel.value = current;
+  }
+
+  document.getElementById('assetClassInput').addEventListener('change', async (e)=>{
+    if(e.target.value !== '__add_new__') return;
+    const name = (prompt('Name for the new asset class (e.g. Real Estate, Crypto, PPF):') || '').trim();
+    if(!name){ populateAssetClassSelect(); return; }
+    if(!assetClassList().includes(name)){
+      state.assetClasses = assetClassList().concat([name]);
+      await persist('assetClasses');
+    }
+    populateAssetClassSelect();
+    e.target.value = name;
+  });
+
+  // ---------- Filter controls ----------
+  function populateAssetClassFilter(){
+    const sel = document.getElementById('assetClassFilter');
+    const current = sel.value;
+    sel.innerHTML = ['<option value="All">All classes</option>'].concat(
+      assetClassList().map(c=>`<option>${c}</option>`)
+    ).join('');
+    if(current) sel.value = current;
+  }
+  document.getElementById('assetStatusFilter').addEventListener('change', (e)=>{ assetFilter.status = e.target.value; renderAssets(); });
+  document.getElementById('assetClassFilter').addEventListener('change', (e)=>{ assetFilter.cls = e.target.value; renderAssets(); });
+  document.getElementById('loanStatusFilter').addEventListener('change', (e)=>{ loanFilterStatus = e.target.value; renderLoans(); });
+  document.querySelectorAll('#goalStatusSeg button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('#goalStatusSeg button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      goalFilterStatus = btn.dataset.val;
+      renderGoals();
+    });
+  });
+
+  function render(){
+    renderStamp();
+    renderIncome();
+    renderAssets();
+    renderLoans();
+    renderGoals();
+    renderDashboard();
+  }
+
+  // ---------- Init ----------
+  document.querySelectorAll('input[type=month]').forEach(i=> i.value = currentMonthKey());
+
+  if(isConfigFilledIn(FIREBASE_CONFIG)){
+    // Config is baked into the file — connects automatically on every device, every browser.
+    setStatus(null, 'Connecting…');
+    initFirebase(FIREBASE_CONFIG);
+  } else {
+    // Fallback for local testing before you've filled in FIREBASE_CONFIG above.
+    const saved = getSavedConfig();
+    if(saved){
+      setStatus(null, 'Connecting…');
+      initFirebase(saved);
+    } else {
+      setStatus('error', 'Not connected');
+      document.getElementById('setupBanner').style.display = 'flex';
+    }
+  }
+  render();
+
+})();
+</script>
+</body>
+</html>
