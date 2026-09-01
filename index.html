@@ -648,6 +648,29 @@
   const DOC_KEYS = ['income','assets','liabilities','goals','history','loanLedger','assetClasses'];
   const LS_CONFIG_KEY = 'fintracker_firebase_config';
   const LS_THEME_KEY = 'fintracker_theme';
+  // Local cache keeps the app usable through refresh/offline periods.
+  // Firestore remains the source of truth for cross-device sync.
+  const LS_DATA_KEY = 'fintracker_data_v2';
+
+  function saveLocalCache(){
+    try {
+      localStorage.setItem(LS_DATA_KEY, JSON.stringify(state));
+    } catch(e) { console.warn('Local cache save failed', e); }
+  }
+
+  function loadLocalCache(){
+    try {
+      const cached = JSON.parse(localStorage.getItem(LS_DATA_KEY) || 'null');
+      if(!cached) return false;
+      DOC_KEYS.forEach(key=>{
+        if(Array.isArray(cached[key])) state[key] = cached[key];
+      });
+      return true;
+    } catch(e) {
+      console.warn('Local cache load failed', e);
+      return false;
+    }
+  }
 
   // ---------------------------------------------------------------------
   // FIREBASE CONFIG — fill this in ONCE before you push to GitHub, and
@@ -889,7 +912,15 @@
       const unsub = db.collection(COLLECTION).doc(key).onSnapshot(
         (snap)=>{
           const data = snap.exists ? snap.data() : {};
-          state[key] = Array.isArray(data.items) ? data.items : [];
+          // Never wipe a valid local cache just because a Firestore document
+          // is temporarily missing. If Firestore has data, it becomes the
+          // authoritative copy and is cached locally.
+          if(snap.exists && Array.isArray(data.items)) {
+            state[key] = data.items;
+            saveLocalCache();
+          } else if(!snap.exists && !Array.isArray(state[key])) {
+            state[key] = [];
+          }
           loadedKeys.add(key);
           if(loadedKeys.size >= DOC_KEYS.length){
             document.getElementById('loadingLine').style.display = 'none';
@@ -915,7 +946,10 @@
       return;
     }
     try{
+      // Save locally first so refreshes never lose the latest entered data.
+      saveLocalCache();
       await db.collection(COLLECTION).doc(k).set({ items: state[k], updatedAt: Date.now() });
+      saveLocalCache();
       showToast('Saved');
     }catch(e){
       console.error('Save failed', e);
@@ -1612,6 +1646,9 @@
   }
 
   // ---------- Init ----------
+  // Restore the last known state immediately, before Firebase finishes connecting.
+  // This prevents a page refresh from appearing to erase the user's data.
+  loadLocalCache();
   document.querySelectorAll('input[type=month]').forEach(i=> i.value = currentMonthKey());
 
   if(isConfigFilledIn(FIREBASE_CONFIG)){
