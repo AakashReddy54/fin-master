@@ -218,6 +218,33 @@
   .progress-fill{ height:100%; background: var(--accent); border-radius:4px; opacity:0.75; transition: width 0.8s cubic-bezier(.2,.8,.3,1); }
   .progress-fill.done{ background: var(--accent); opacity:1; }
 
+  /* ---------- Goal cards ---------- */
+  .goal-list{ display:flex; flex-direction:column; gap:14px; }
+  .goal-card{ padding: 18px 20px; }
+  .goal-card-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:14px; flex-wrap:wrap; }
+  .goal-card-title{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .goal-card-title h3{ font-family:'Space Grotesk',sans-serif; font-size:16.5px; font-weight:600; margin:0; }
+  .goal-card-meta{ display:flex; gap:16px; margin-top:6px; flex-wrap:wrap; }
+  .goal-card-meta .m{ font-size:12px; color: var(--text-soft); }
+  .goal-card-meta .m b{ color: var(--text); font-weight:600; }
+  .goal-card-right{ display:flex; align-items:center; gap:10px; flex-shrink:0; }
+  .goal-card-remaining{ text-align:right; }
+  .goal-card-remaining .k{ font-size:10.5px; color: var(--text-soft); text-transform:uppercase; letter-spacing:0.3px; }
+  .goal-card-remaining .v{ font-family:'JetBrains Mono',monospace; font-weight:600; font-size:15px; }
+  .goal-card-progress{ margin-top:16px; }
+  .goal-card-progress .progress-track{ width:100%; height:8px; }
+  .goal-card-progress .progress-label{ display:flex; justify-content:space-between; margin-top:6px; font-size:12px; color: var(--text-soft); }
+  .goal-card-notes{ font-size:12.5px; color: var(--text-soft); margin-top:12px; }
+  .goal-card-assets{ margin-top:14px; border-top:1px solid var(--glass-border); padding-top:12px; }
+  .goal-card-assets .label{ font-size:10.5px; color: var(--text-soft); text-transform:uppercase; letter-spacing:0.3px; margin-bottom:8px; }
+  .goal-card-assets .asset-row{ display:flex; justify-content:space-between; align-items:center; padding:5px 0; font-size:13px; }
+  .goal-card-assets .asset-row .name{ color: var(--text); }
+  .goal-card-assets .asset-row .name.closed{ color: var(--text-soft); text-decoration:line-through; }
+  .goal-card-assets .asset-row .val{ font-family:'JetBrains Mono',monospace; color: var(--text-soft); }
+  .goal-card-actions{ display:flex; gap:14px; margin-top:14px; }
+  .goal-card-actions button{ background:none; border:none; cursor:pointer; color: var(--text-soft); font-size:12.5px; padding:4px 2px; }
+  .goal-card-actions button:hover{ color: var(--red); }
+
   .person-split{ display:flex; gap:14px; margin-bottom:16px; flex-wrap:wrap; }
   .split-card{ flex:1; min-width:160px; padding:16px 18px; }
   .split-card .name{ font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:15px; }
@@ -240,6 +267,15 @@
     from{ opacity:0; transform: translateY(14px) scale(0.97); }
     to{ opacity:1; transform: translateY(0) scale(1); }
   }
+  .modal-head{ display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:16px; }
+  .modal-head h3{ margin:0 0 0; }
+  .modal-close{
+    flex-shrink:0; width:28px; height:28px; border-radius:8px; border:1px solid var(--glass-border);
+    background: rgba(255,255,255,0.05); color: var(--text); font-size:15px; line-height:1; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; transition: background-color 0.2s ease, transform 0.2s ease;
+  }
+  .modal-close:hover{ background: rgba(255,255,255,0.12); }
+  .modal-close:active{ transform: scale(0.9); }
   .modal h3{ font-family:'Space Grotesk',sans-serif; font-size:19px; margin:0 0 16px; font-weight:600; }
   .modal p.desc{ font-size:12.5px; color: var(--text-soft); margin-top:-10px; margin-bottom:16px; line-height:1.5; }
   .field{ margin-bottom:12px; }
@@ -318,16 +354,6 @@
     <button class="add-btn" id="btnOpenSetup">Connect just this browser</button>
   </div>
 
-  <div class="hero glass">
-    <div class="hero-label">Net worth (assets − liabilities)</div>
-    <div class="hero-figure" id="nwFigure">₹ 0</div>
-    <div class="hero-subrow">
-      <div class="hero-sub assets"><div class="k">Total assets</div><div class="v" id="totalAssetsFig">₹ 0</div></div>
-      <div class="hero-sub liab"><div class="k">Total liabilities</div><div class="v" id="totalLiabFig">₹ 0</div></div>
-      <div class="hero-sub income"><div class="k">Income this month</div><div class="v" id="totalIncomeFig">₹ 0</div></div>
-    </div>
-  </div>
-
   <nav class="tabs glass">
     <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
     <button class="tab-btn" data-tab="income">Income</button>
@@ -340,6 +366,15 @@
 
   <!-- DASHBOARD -->
   <section class="panel active" id="panel-dashboard">
+    <div class="hero glass">
+      <div class="hero-label">Net worth (assets − liabilities)</div>
+      <div class="hero-figure" id="nwFigure">₹ 0</div>
+      <div class="hero-subrow">
+        <div class="hero-sub assets"><div class="k">Total assets</div><div class="v" id="totalAssetsFig">₹ 0</div></div>
+        <div class="hero-sub liab"><div class="k">Total liabilities</div><div class="v" id="totalLiabFig">₹ 0</div></div>
+        <div class="hero-sub income"><div class="k">Income this month</div><div class="v" id="totalIncomeFig">₹ 0</div></div>
+      </div>
+    </div>
     <div class="chart-card glass">
       <div class="panel-head">
         <h2>Net worth over time</h2>
@@ -417,7 +452,7 @@
 <!-- ===== Setup modal ===== -->
 <div class="overlay" id="overlaySetup">
   <div class="modal glass">
-    <h3>Connect Firebase (this browser only)</h3>
+    <div class="modal-head"><h3>Connect Firebase (this browser only)</h3><button type="button" class="modal-close" data-close aria-label="Close">✕</button></div>
     <p class="desc">
       This saves the config only to this browser's local storage — useful for quick local testing, but it won't follow you to another device. For a permanent, works-everywhere setup, edit <code class="inline">FIREBASE_CONFIG</code> directly in the HTML file and re-host it instead (see README.md).
     </p>
@@ -448,7 +483,7 @@
 
 <div class="overlay" id="overlayIncome">
   <div class="modal glass">
-    <h3>Log income</h3>
+    <div class="modal-head"><h3>Log income</h3><button type="button" class="modal-close" data-close aria-label="Close">✕</button></div>
     <form id="formIncome">
       <div class="grid2">
         <div class="field"><label>Month</label><input type="month" name="month" required></div>
@@ -471,7 +506,7 @@
 
 <div class="overlay" id="overlayAsset">
   <div class="modal glass">
-    <h3>Add / update asset</h3>
+    <div class="modal-head"><h3>Add / update asset</h3><button type="button" class="modal-close" data-close aria-label="Close">✕</button></div>
     <form id="formAsset">
       <div class="field"><label>Asset name</label><input type="text" name="name" required placeholder="e.g. Quant Tax Savings"></div>
       <div class="grid2">
@@ -503,7 +538,7 @@
 
 <div class="overlay" id="overlayLoan">
   <div class="modal glass">
-    <h3>Add / update loan</h3>
+    <div class="modal-head"><h3>Add / update loan</h3><button type="button" class="modal-close" data-close aria-label="Close">✕</button></div>
     <form id="formLoan">
       <div class="field"><label>Loan name</label><input type="text" name="loanName" required placeholder="e.g. HDFC Personal Loan"></div>
       <div class="grid2">
@@ -538,7 +573,7 @@
 
 <div class="overlay" id="overlayLoanAdjust">
   <div class="modal glass">
-    <h3>Prepayment / adjustment</h3>
+    <div class="modal-head"><h3>Prepayment / adjustment</h3><button type="button" class="modal-close" data-close aria-label="Close">✕</button></div>
     <p class="desc">Use this for anything outside the regular EMI — a lump-sum prepayment, a bank fee, an interest waiver, or a manual correction.</p>
     <form id="formLoanAdjust">
       <div class="field"><label>Loan</label><select name="loanId" id="adjustLoanSelect" required></select></div>
@@ -560,7 +595,7 @@
 
 <div class="overlay" id="overlayGoal">
   <div class="modal glass">
-    <h3>Add / update goal</h3>
+    <div class="modal-head"><h3>Add / update goal</h3><button type="button" class="modal-close" data-close aria-label="Close">✕</button></div>
     <form id="formGoal">
       <div class="field"><label>Goal name</label><input type="text" name="name" required placeholder="e.g. Emergency fund"></div>
       <div class="grid2">
@@ -587,7 +622,7 @@
 
 <div class="overlay" id="overlaySnapshot">
   <div class="modal glass">
-    <h3>Log month-end snapshot</h3>
+    <div class="modal-head"><h3>Log month-end snapshot</h3><button type="button" class="modal-close" data-close aria-label="Close">✕</button></div>
     <p class="desc">This is separate from your asset/loan entries — it's a point-in-time record so the trend line stays accurate even as balances change later.</p>
     <form id="formSnapshot">
       <div class="grid2">
@@ -920,10 +955,6 @@
   document.querySelectorAll('[data-close]').forEach(b=>{
     b.addEventListener('click', ()=> { b.closest('.overlay').classList.remove('open'); resetEditModals(); });
   });
-  document.querySelectorAll('.overlay').forEach(ov=>{
-    ov.addEventListener('click', (e)=>{ if(e.target === ov){ ov.classList.remove('open'); resetEditModals(); } });
-  });
-
   document.getElementById('btnAddIncome').addEventListener('click', ()=> {
     resetEditModals();
     document.getElementById('formIncome').reset();
@@ -1414,29 +1445,44 @@
         : `<div class="glass empty"><b>Nothing here</b>${goalFilterStatus==='Open' ? 'No open goals — check the Achieved tab, or add a new one.' : 'No achieved goals yet.'}</div>`;
       return;
     }
-    holder.innerHTML = `<div class="glass table-card"><table class="ledger"><thead><tr>
-      <th>Goal</th><th>Type</th><th>Target date</th><th>Progress</th><th class="num">Remaining</th><th></th><th></th>
-      </tr></thead><tbody>
+    holder.innerHTML = `<div class="goal-list">
       ${rows.map(g=>{
         const linked = linkedAssetsFor(g.id);
         const current = g._current, pct = g._pct, achieved = g._achieved;
         const remaining = Math.max(0, (g.targetAmount||0)-current);
-        const linkedList = linked.length>0
-          ? `<div class="sub" style="margin-top:6px;line-height:1.6;">${linked.map(a=>`${a.status==='Closed'?'<s>':''}${a.name} — ${fmtINR(a.currentValue)}${a.status==='Closed'?'</s>':''}`).join('<br>')}</div>`
+        const assetsBlock = linked.length>0
+          ? `<div class="goal-card-assets">
+              <div class="label">Linked assets (${linked.length})</div>
+              ${linked.map(a=>`<div class="asset-row"><span class="name${a.status==='Closed'?' closed':''}">${a.name}</span><span class="val">${fmtINR(a.currentValue)}</span></div>`).join('')}
+            </div>`
           : '';
-        return `<tr>
-          <td>${g.name}${g.notes?`<div class="sub">${g.notes}</div>`:''}${linkedList}</td>
-          <td>${g.type}</td><td>${dateLabel(g.targetDate)}</td>
-          <td>
+        return `<div class="glass goal-card">
+          <div class="goal-card-top">
+            <div class="goal-card-title">
+              <h3>${g.name}</h3>
+              <span class="tag ${achieved?'achieved':'active'}">${achieved?'Achieved':'In progress'}</span>
+            </div>
+            <div class="goal-card-right">
+              <div class="goal-card-remaining">
+                <div class="k">${achieved?'Status':'Remaining'}</div>
+                <div class="v ${achieved?'':'neg'}">${achieved?'—':fmtINR(remaining)}</div>
+              </div>
+            </div>
+          </div>
+          <div class="goal-card-meta">
+            <div class="m">Type: <b>${g.type}</b></div>
+            <div class="m">Target date: <b>${dateLabel(g.targetDate)}</b></div>
+          </div>
+          <div class="goal-card-progress">
             <div class="progress-track"><div class="progress-fill ${achieved?'done':''}" style="width:${pct}%"></div></div>
-            <div class="sub" style="margin-top:3px;">${fmtINR(current)} of ${fmtINR(g.targetAmount)}${linked.length>0?` · from ${linked.length} linked asset${linked.length>1?'s':''}`:''}</div>
-          </td>
-          <td class="num ${achieved?'':'neg'}">${achieved?'—':fmtINR(remaining)}</td>
-          <td><span class="tag ${achieved?'achieved':'active'}">${achieved?'Achieved':'In progress'}</span></td>
-          <td class="row-actions"><button data-edit="goals::${g.id}">edit</button> <button data-delete="goals::${g.id}">remove</button></td>
-        </tr>`;
+            <div class="progress-label"><span>${fmtINR(current)} of ${fmtINR(g.targetAmount)}</span><span>${pct}%</span></div>
+          </div>
+          ${g.notes?`<div class="goal-card-notes">${g.notes}</div>`:''}
+          ${assetsBlock}
+          <div class="goal-card-actions"><button data-edit="goals::${g.id}">Edit</button><button data-delete="goals::${g.id}">Remove</button></div>
+        </div>`;
       }).join('')}
-      </tbody></table></div>`;
+      </div>`;
   }
 
   function renderDashboard(){
