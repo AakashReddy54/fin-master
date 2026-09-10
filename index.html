@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Fin Tracker</title>
+<title>fin.master</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%232F5FD9'/%3E%3Ctext x='32' y='45' font-family='Arial,sans-serif' font-weight='700' font-size='38' fill='%23FFFFFF' text-anchor='middle'%3E%E2%82%B9%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Poppins:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 
@@ -15,39 +16,41 @@
 
 <style>
   :root{
-    --bg1: #0B0B0C;
+    --bg1: #0A0B0E;
     --glass: rgba(255,255,255,0.045);
     --glass-strong: rgba(255,255,255,0.07);
     --glass-border: rgba(255,255,255,0.09);
-    --text: #EFEDE8;
-    --text-soft: #8C8A85;
-    --accent: #C9A96A;
-    --accent-soft: rgba(201,169,106,0.14);
-    --green: #7FAE8E;
-    --red: #BD7E76;
+    --text: #ECEDF0;
+    --text-soft: #8A8D94;
+    --accent: #60A5FA;
+    --accent-soft: rgba(96,165,250,0.14);
+    --on-accent: #0B1220;
+    --green: #52C77E;
+    --red: #E5726B;
     --radius: 14px;
     --shadow-card: 0 8px 32px rgba(0,0,0,0.28);
-    --sticky-bg: rgba(18,16,20,0.94);
-    --modal-bg: #17151B;
+    --sticky-bg: rgba(16,17,20,0.94);
+    --modal-bg: #16181D;
     --field-bg: rgba(255,255,255,0.06);
     --field-bg-focus: rgba(255,255,255,0.1);
   }
   body[data-theme="light"]{
-    --bg1: #F7F5F0;
-    --glass: rgba(255,255,255,0.62);
-    --glass-strong: rgba(255,255,255,0.8);
-    --glass-border: rgba(20,18,12,0.09);
-    --text: #211F1A;
-    --text-soft: #7A776D;
-    --accent: #A9822F;
-    --accent-soft: rgba(169,130,47,0.12);
-    --green: #4F8A68;
-    --red: #A9564C;
-    --shadow-card: 0 8px 28px rgba(20,18,12,0.08);
-    --sticky-bg: rgba(250,248,242,0.95);
-    --modal-bg: #FDFCF8;
-    --field-bg: rgba(20,18,12,0.04);
-    --field-bg-focus: rgba(20,18,12,0.07);
+    --bg1: #F6F7F9;
+    --glass: rgba(255,255,255,0.65);
+    --glass-strong: rgba(255,255,255,0.82);
+    --glass-border: rgba(15,17,20,0.09);
+    --text: #16181D;
+    --text-soft: #666B75;
+    --accent: #2F5FD9;
+    --accent-soft: rgba(47,95,217,0.12);
+    --on-accent: #FFFFFF;
+    --green: #247A4A;
+    --red: #C4453D;
+    --shadow-card: 0 8px 28px rgba(15,17,20,0.08);
+    --sticky-bg: rgba(248,249,251,0.95);
+    --modal-bg: #FDFDFE;
+    --field-bg: rgba(15,17,20,0.04);
+    --field-bg-focus: rgba(15,17,20,0.07);
   }
   *{ box-sizing:border-box; }
   html,body{ margin:0; padding:0; }
@@ -72,7 +75,7 @@
     background: var(--bg1);
   }
 
-  .wrap{ max-width: 900px; margin:0 auto; padding: 32px 20px 0; }
+  .wrap{ max-width: min(1500px, 94vw); margin:0 auto; padding: 32px 20px 0; }
 
   /* ---------- Glass utility ---------- */
   .glass{
@@ -87,22 +90,22 @@
 
   /* ---------- Header ---------- */
   .sticky-head{
-    position: sticky; top:0; z-index:40; background: var(--bg1);
+    position: sticky; top:0; z-index:40;
     padding-top: 8px; margin: -8px -20px 22px; padding-left:20px; padding-right:20px;
   }
   header.top{
-    display:flex; justify-content:space-between; align-items:center;
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
     padding: 16px 22px; margin-bottom: 10px;
     background: var(--sticky-bg); backdrop-filter: blur(16px);
   }
-  .brand{ display:flex; align-items:center; gap:10px; min-width:0; }
+  .brand{ display:flex; align-items:center; gap:10px; min-width:0; flex:1 1 auto; overflow:hidden; }
   .brand .mark{
     width:34px; height:34px; border-radius:10px; flex-shrink:0;
     background: var(--accent);
     display:flex; align-items:center; justify-content:center;
-    font-family: sans-serif; font-weight:700; font-size:15px; color:#0F1226;
+    font-family: sans-serif; font-weight:700; font-size:15px; color:var(--on-accent);
   }
-  .brand h1{ font-family:'Playfair Display',serif; font-size:19px; font-weight:600; margin:0; letter-spacing:0.2px; white-space:nowrap; }
+  .brand h1{ font-family:'Playfair Display',serif; font-size:19px; font-weight:600; margin:0; letter-spacing:0.2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .header-actions{ display:flex; align-items:center; gap:8px; flex-shrink:0; }
   .theme-toggle{
     width:32px; height:32px; border-radius:10px; display:flex; align-items:center; justify-content:center;
@@ -129,7 +132,7 @@
   .hero{ padding: 26px 28px; margin-bottom: 20px; position:relative; overflow:hidden; }
   .hero::after{
     content:""; position:absolute; inset:0; border-radius: var(--radius);
-    background: linear-gradient(120deg, rgba(201,169,106,0.06), transparent 60%);
+    background: linear-gradient(120deg, var(--accent-soft), transparent 60%);
     pointer-events:none;
   }
   .hero-label{ font-size:13px; color: var(--text-soft); position:relative; }
@@ -155,7 +158,7 @@
     background:none; border:none; cursor:pointer; color: var(--text-soft);
     padding:9px 16px; border-radius:12px; white-space:nowrap; transition: all 0.2s ease;
   }
-  nav.tabs button.active{ color:#0B0B0C; background: var(--accent); transform: translateY(-1px); }
+  nav.tabs button.active{ color:var(--on-accent); background: var(--accent); transform: translateY(-1px); }
   nav.tabs button:not(.active):hover{ color: var(--text); background: rgba(255,255,255,0.06); }
   nav.tabs button:active{ transform: scale(0.96); }
 
@@ -195,16 +198,16 @@
     font-family:'Poppins',sans-serif; font-size:12.5px; font-weight:600; color: var(--text-soft);
     background:none; border:none; border-radius:7px; padding:6px 12px; cursor:pointer;
   }
-  .seg button.active{ background: var(--accent); color:#0B0B0C; }
+  .seg button.active{ background: var(--accent); color:var(--on-accent); }
 
   button.add-btn{
     font-family:'Poppins',sans-serif; font-weight:600; font-size:13.5px;
     background: var(--accent);
-    color:#0B0B0C; border:none; border-radius:12px; padding:10px 18px; cursor:pointer;
-    box-shadow: 0 4px 18px rgba(201,169,106,0.18);
+    color:var(--on-accent); border:none; border-radius:12px; padding:10px 18px; cursor:pointer;
+    box-shadow: 0 4px 18px var(--accent-soft);
     transition: transform 0.15s ease, filter 0.2s ease, box-shadow 0.2s ease;
   }
-  button.add-btn:hover{ filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 6px 22px rgba(201,169,106,0.28); }
+  button.add-btn:hover{ filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 6px 22px var(--accent-soft); }
   button.add-btn:active{ transform: scale(0.96); }
 
   /* ---------- Ledger-in-glass table ---------- */
@@ -247,7 +250,7 @@
   }
   .tag.active{ border-color: rgba(127,174,142,0.5); color: var(--green); background: rgba(127,174,142,0.08); }
   .tag.closed{ border-color: rgba(255,255,255,0.2); color: var(--text-soft); }
-  .tag.achieved{ border-color: rgba(201,169,106,0.5); color: var(--accent); background: var(--accent-soft); }
+  .tag.achieved{ border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
   .row-actions{ text-align:right; white-space:nowrap; }
   .row-actions button{
@@ -321,7 +324,7 @@
   .btn-secondary:hover{ color: var(--text); border-color: rgba(255,255,255,0.35); }
   .btn-secondary:active, .btn-primary:active{ transform: scale(0.96); }
   .btn-primary{
-    background: var(--accent); border:none; color:#0B0B0C; border-radius:10px;
+    background: var(--accent); border:none; color:var(--on-accent); border-radius:10px;
     padding:10px 18px; cursor:pointer; font-family:'Poppins',sans-serif; font-weight:700; font-size:13.5px;
     transition: transform 0.15s ease, filter 0.2s ease;
   }
@@ -352,10 +355,22 @@
     .hero-figure{ font-size:32px; }
     .grid2{ grid-template-columns:1fr; }
   }
+  @media (max-width:400px){
+    header.top{ padding:12px 14px; gap:6px; }
+    .header-actions{ gap:5px; }
+    .theme-toggle{ width:29px; height:29px; font-size:12.5px; }
+    .status-pill.compact{ width:24px; height:24px; padding:5px; }
+    .brand{ gap:7px; }
+    .brand .mark{ width:30px; height:30px; font-size:13px; }
+    .brand h1{ font-size:16px; }
+  }
+  @media (max-width:340px){
+    .brand h1{ display:none; } /* icon mark alone still identifies the app at this width */
+  }
 
   /* ---------- Desktop / larger screens: more breathing room, bigger figures ---------- */
   @media (min-width:860px){
-    .wrap{ max-width: 1180px; padding-left:36px; padding-right:36px; }
+    .wrap{ padding-left:36px; padding-right:36px; }
     .sticky-head{ margin-left:-36px; margin-right:-36px; padding-left:36px; padding-right:36px; }
     .brand h1{ font-size:21px; }
     .hero{ padding: 34px 40px; }
@@ -664,7 +679,7 @@
     <form id="formAsset">
       <div class="field"><label>Asset name</label><input type="text" name="name" required placeholder="e.g. Quant Tax Savings"></div>
       <div class="grid2">
-        <div class="field"><label>Product type</label><input type="text" name="productType" placeholder="Mutual Fund / FD / Gold Bond"></div>
+        <div class="field"><label>Product type</label><input type="text" name="productType" id="assetProductTypeInput" placeholder="Mutual Fund / FD / Gold Bond"></div>
         <div class="field"><label>Platform</label><input type="text" name="platform" placeholder="Groww / SBI Yono"></div>
         <div class="field"><label>Asset class</label>
           <select name="assetClass" id="assetClassInput" required></select>
@@ -682,16 +697,18 @@
       <div class="field"><label>Linked goal (optional)</label>
         <select name="goalId" id="assetGoalSelect"><option value="">— not tied to a goal —</option></select>
       </div>
-      <div class="grid2">
-        <div class="field"><label>Recurring monthly contribution (SIP)</label>
-          <select name="sipEnabled"><option value="">No — I'll update this manually</option><option value="yes">Yes — auto-add each month</option></select>
+      <div id="sipFieldsContainer" style="display:none;">
+        <div class="grid2">
+          <div class="field"><label>Recurring monthly contribution (SIP)</label>
+            <select name="sipEnabled"><option value="">No — I'll update this manually</option><option value="yes">Yes — auto-add each month</option></select>
+          </div>
+          <div class="field"><label>SIP amount (₹/month)</label><input type="number" name="sipAmount" min="0" step="1" placeholder="e.g. 5000"></div>
+          <div class="field"><label>SIP day of month</label><input type="number" name="sipDay" min="1" max="28" placeholder="e.g. 5"></div>
         </div>
-        <div class="field"><label>SIP amount (₹/month)</label><input type="number" name="sipAmount" min="0" step="1" placeholder="e.g. 5000"></div>
-        <div class="field"><label>SIP day of month</label><input type="number" name="sipDay" min="1" max="28" placeholder="e.g. 5"></div>
+        <p class="desc" style="margin-top:0;">
+          SIP auto-adds the monthly amount to both principal and current value the next time either of you opens the app after the due date — that keeps your cost basis accurate automatically. It does <b>not</b> fetch live NAV/market value — the actual market growth on top is still something you'll want to update by editing "Current value" periodically, since that needs real fund data this app doesn't have access to.
+        </p>
       </div>
-      <p class="desc" style="margin-top:0;">
-        SIP auto-adds the monthly amount to both principal and current value the next time either of you opens the app after the due date — that keeps your cost basis accurate automatically. It does <b>not</b> fetch live NAV/market value — the actual market growth on top is still something you'll want to update by editing "Current value" periodically, since that needs real fund data this app doesn't have access to.
-      </p>
       <div class="field"><label>Notes (optional)</label><input type="text" name="notes" placeholder="e.g. joint SIP, nominee details"></div>
       <div class="modal-actions">
         <button type="button" class="btn-secondary" data-close>Cancel</button>
@@ -1548,7 +1565,7 @@
   document.getElementById('btnAddAsset').addEventListener('click', ()=> {
     resetEditModals();
     document.getElementById('formAsset').reset();
-    populateGoalSelect(); populateAssetClassSelect(); openModal('overlayAsset');
+    populateGoalSelect(); populateAssetClassSelect(); updateSipFieldsVisibility(); openModal('overlayAsset');
   });
   document.getElementById('btnAddLoan').addEventListener('click', ()=> {
     resetEditModals();
@@ -1584,6 +1601,24 @@
     document.querySelector('#formGoal button[type=submit]').textContent = 'Save goal';
   }
 
+  // SIP fields only make sense for mutual funds — hide them for everything else,
+  // matched against the free-text Product Type field.
+  function isMutualFundProductType(){
+    const val = (document.getElementById('assetProductTypeInput').value || '').trim().toLowerCase();
+    return val.includes('mutual');
+  }
+  function updateSipFieldsVisibility(){
+    const show = isMutualFundProductType();
+    const container = document.getElementById('sipFieldsContainer');
+    container.style.display = show ? '' : 'none';
+    if(!show){
+      // Not a mutual fund (anymore) — SIP doesn't apply, so don't leave a hidden "on" toggle behind.
+      const sel = document.querySelector('#formAsset [name=sipEnabled]');
+      if(sel) sel.value = '';
+    }
+  }
+  document.getElementById('assetProductTypeInput').addEventListener('input', updateSipFieldsVisibility);
+
   function openIncomeEdit(item){
     editState.income = item.id;
     fillForm(document.getElementById('formIncome'), item);
@@ -1599,6 +1634,7 @@
     document.getElementById('assetGoalSelect').value = item.goalId || '';
     document.getElementById('assetClassInput').value = item.assetClass || '';
     document.querySelector('#formAsset [name=sipEnabled]').value = item.sipEnabled ? 'yes' : '';
+    updateSipFieldsVisibility();
     document.querySelector('#overlayAsset h3').textContent = 'Edit asset';
     document.querySelector('#formAsset button[type=submit]').textContent = 'Update asset';
     openModal('overlayAsset');
@@ -2381,6 +2417,11 @@
       chartHolder.innerHTML = `<div class="chart-empty">No monthly snapshots logged yet. Add one to start the trend line.</div>`;
     } else {
       const W = 820, H = 150, pad = 30;
+      const cs = getComputedStyle(document.body);
+      const accentColor = cs.getPropertyValue('--accent').trim();
+      const greenColor = cs.getPropertyValue('--green').trim();
+      const redColor = cs.getPropertyValue('--red').trim();
+      const textSoftColor = cs.getPropertyValue('--text-soft').trim();
       const nwVals = hist.map(h=>h.assets-h.liabilities);
       const min = Math.min(0, ...nwVals), max = Math.max(0, ...nwVals);
       const range = (max-min) || 1;
@@ -2393,18 +2434,18 @@
       const zeroY = H-pad - ((0-min)/range)*(H-2*pad);
       const path = pts.map((p,i)=> (i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
       const areaPath = path + ` L${pts[pts.length-1][0].toFixed(1)},${(H-pad).toFixed(1)} L${pts[0][0].toFixed(1)},${(H-pad).toFixed(1)} Z`;
-      const dots = pts.map((p,i)=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3.5" fill="${nwVals[i]>=0?'#7FAE8E':'#BD7E76'}" stroke="rgba(255,255,255,0.4)" stroke-width="1"><title>${monthLabel(hist[i].month)}: ${fmtINR(nwVals[i])}</title></circle>`).join('');
-      const labels = hist.map((h,i)=> i===0||i===hist.length-1||hist.length<6 ? `<text x="${pts[i][0].toFixed(1)}" y="${H-8}" font-size="10" fill="#A9A6C4" text-anchor="middle" font-family="JetBrains Mono, monospace">${monthLabel(h.month)}</text>` : '').join('');
+      const dots = pts.map((p,i)=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3.5" fill="${nwVals[i]>=0?greenColor:redColor}" stroke="rgba(255,255,255,0.4)" stroke-width="1"><title>${monthLabel(hist[i].month)}: ${fmtINR(nwVals[i])}</title></circle>`).join('');
+      const labels = hist.map((h,i)=> i===0||i===hist.length-1||hist.length<6 ? `<text x="${pts[i][0].toFixed(1)}" y="${H-8}" font-size="10" fill="${textSoftColor}" text-anchor="middle" font-family="JetBrains Mono, monospace">${monthLabel(h.month)}</text>` : '').join('');
       chartHolder.innerHTML = `<svg class="nw-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
         <defs>
           <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#C9A96A" stop-opacity="0.22"/>
-            <stop offset="100%" stop-color="#C9A96A" stop-opacity="0"/>
+            <stop offset="0%" stop-color="${accentColor}" stop-opacity="0.22"/>
+            <stop offset="100%" stop-color="${accentColor}" stop-opacity="0"/>
           </linearGradient>
         </defs>
         <path d="${areaPath}" fill="url(#areaGrad)" stroke="none"/>
         <line x1="${pad}" y1="${zeroY.toFixed(1)}" x2="${W-pad}" y2="${zeroY.toFixed(1)}" stroke="rgba(255,255,255,0.14)" stroke-dasharray="3,3"/>
-        <path d="${path}" fill="none" stroke="#C9A96A" stroke-width="2"/>
+        <path d="${path}" fill="none" stroke="${accentColor}" stroke-width="2"/>
         ${dots}
         ${labels}
       </svg>`;
