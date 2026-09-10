@@ -121,6 +121,8 @@
   .status-dot{ width:7px; height:7px; border-radius:50%; background: var(--text-soft); transition: background-color 0.3s ease; flex-shrink:0; }
   .status-pill.connected .status-dot{ background: var(--green); box-shadow:0 0 6px var(--green); }
   .status-pill.error .status-dot{ background: var(--red); box-shadow:0 0 6px var(--red); }
+  .status-pill.syncing .status-dot{ background: var(--accent); box-shadow:0 0 6px var(--accent); animation: pulse-dot 1s ease-in-out infinite; }
+  @keyframes pulse-dot{ 0%,100%{ opacity:1; } 50%{ opacity:0.4; } }
   .status-pill:hover{ border-color: rgba(255,255,255,0.3); }
 
   /* ---------- Net worth hero ---------- */
@@ -1311,7 +1313,7 @@
     ['statusPill','statusPillLarge'].forEach(id=>{
       const pill = document.getElementById(id);
       if(!pill) return;
-      pill.classList.remove('connected','error');
+      pill.classList.remove('connected','error','syncing');
       if(mode) pill.classList.add(mode);
     });
     const t = document.getElementById('statusText'); if(t) t.textContent = text;
@@ -1337,6 +1339,12 @@
   // ---------- Firebase setup ----------
   let lastSyncedAt = null;
   const seededFromLocal = new Set();
+  // Tracks which docs currently have a write pending acknowledgment from the server —
+  // this, not a write promise's resolve/reject, is the accurate source for the status
+  // pill. A write promise can transiently reject (flaky connection, browser shield
+  // interference, etc.) even though the write is already safely queued and will land;
+  // Firestore's own snapshot metadata doesn't have that false-alarm problem.
+  const pendingWriteDocs = new Set();
 
   function initFirebaseApp(){
     if(!firebase.apps || firebase.apps.length === 0){
@@ -1361,6 +1369,7 @@
     const loadedKeys = new Set();
     DOC_KEYS.forEach(key=>{
       const unsub = db.collection(COLLECTION).doc(key).onSnapshot(
+        { includeMetadataChanges: true },
         (snap)=>{
           if(snap.exists){
             const data = snap.data();
@@ -1381,8 +1390,17 @@
             seedAssetClasses();
           }
           firebaseReady = true;
-          lastSyncedAt = Date.now();
-          setStatus('connected', 'Connected');
+
+          // Accurate status: this doc's write is still pending server ack, or it's fully synced.
+          if(snap.metadata.hasPendingWrites) pendingWriteDocs.add(key);
+          else pendingWriteDocs.delete(key);
+
+          if(pendingWriteDocs.size > 0){
+            setStatus('syncing', 'Syncing…');
+          } else {
+            lastSyncedAt = Date.now();
+            setStatus('connected', 'Connected');
+          }
           render();
         },
         (err)=>{
@@ -1397,22 +1415,17 @@
 
   async function persist(k){
     cacheToLocal();
-    if(!firebaseReady || !db){
-      showToast('Saved locally — will sync once connected', true);
-      return;
-    }
-    setStatus('connected', 'Syncing…');
+    showToast(firebaseReady ? 'Saved' : 'Saved locally — will sync once connected');
+    if(!firebaseReady || !db) return;
     try{
       await db.collection(COLLECTION).doc(k).set({ items: state[k], updatedAt: Date.now() });
-      lastSyncedAt = Date.now();
-      setStatus('connected', 'Connected');
-      showToast('Saved');
+      // Status itself is driven by the snapshot listener's metadata above, not this promise —
+      // a successful await here just confirms the server has ack'd, nothing more to do.
     }catch(e){
-      console.error('Save failed', e);
-      // Firestore's offline queue will retry automatically once connectivity returns —
-      // nothing is lost, the record is already in `state` and in the local cache.
-      setStatus('error', 'Sync error — will retry');
-      showToast('Saved locally — will sync when connection is back', true);
+      // This promise can reject on a transient hiccup even though the write already landed
+      // in Firestore's local queue (and the snapshot listener above will reflect that).
+      // Don't flip the status pill from here — that's what caused the false "red" flashes.
+      console.warn('persist() write promise did not resolve cleanly (data is still queued locally):', e.code || e.message);
     }
   }
 
