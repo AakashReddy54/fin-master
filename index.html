@@ -598,6 +598,7 @@
     <div id="loanScheduleHolder"></div>
     <div class="panel-head" style="margin-top:20px;">
       <h2>Payment records</h2>
+      <select id="loanRecordsFilter" aria-label="Filter payment records by loan"><option value="All">All loans</option></select>
       <div class="view-toggle" data-key="loanRecords" id="loanRecordsViewToggle"><button data-view="table" class="active">Table</button><button data-view="cards">Cards</button></div>
     </div>
     <div id="loanRecordsHolder"></div>
@@ -838,7 +839,8 @@
         </div>
         <div class="field"><label>Lender</label><input type="text" name="lender" placeholder="e.g. HDFC Bank"></div>
         <div class="field"><label>Original amount (₹)</label><input type="number" name="originalAmount" min="0" step="1"></div>
-        <div class="field"><label>Outstanding balance (₹)</label><input type="number" name="outstandingBalance" min="0" step="1" required></div>
+        <div class="field"><label>Current principal outstanding (₹)</label><input type="number" name="outstandingBalance" min="0" step="1" required></div>
+        <div class="field"><label>Balance confirmed as of</label><input type="date" name="balanceAsOf" required></div>
         <div class="field"><label>EMI (₹/month)</label><input type="number" name="emi" min="0" step="1"></div>
         <div class="field"><label>Interest rate (% p.a.)</label><input type="number" name="interestRate" min="0" step="0.01"></div>
         <div class="field"><label>Start date</label><input type="date" name="startDate"></div>
@@ -907,6 +909,24 @@
         <button type="button" class="btn-secondary" data-close>Cancel</button>
         <button type="submit" class="btn-primary">Save goal</button>
       </div>
+    </form>
+  </div>
+</div>
+
+<div class="overlay" id="overlayLoanPayment">
+  <div class="modal glass">
+    <h3>Record confirmed EMI</h3>
+    <form id="formLoanPayment">
+      <div class="field"><label>Loan</label><select name="loanId" id="paymentLoanSelect" required></select></div>
+      <div class="grid2">
+        <div class="field"><label>Payment date</label><input type="date" name="date" required></div>
+        <div class="field"><label>EMI amount (₹)</label><input type="number" name="amount" min="0.01" step="0.01" required></div>
+        <div class="field"><label>Principal paid (₹) <span class="sub">optional</span></label><input type="number" name="principalComponent" min="0" step="0.01" placeholder="Estimate if blank"></div>
+        <div class="field"><label>Interest paid (₹) <span class="sub">optional</span></label><input type="number" name="interestComponent" min="0" step="0.01" placeholder="Estimate if blank"></div>
+      </div>
+      <div class="field"><label>Note (optional)</label><input type="text" name="note" placeholder="e.g. Sep EMI cleared"></div>
+      <p class="desc">Only log an EMI after the debit has cleared. If you enter the lender's principal/interest split, the app uses those values; otherwise it estimates the split from the current principal and monthly rate. Reconcile the balance against the lender statement periodically.</p>
+      <div class="modal-actions"><button type="button" class="btn-secondary" data-close>Cancel</button><button type="submit" class="btn-primary">Record payment</button></div>
     </form>
   </div>
 </div>
@@ -1709,6 +1729,7 @@
   document.getElementById('btnAddLoan').addEventListener('click', ()=> {
     resetEditModals();
     document.getElementById('formLoan').reset();
+    document.querySelector('#formLoan [name=balanceAsOf]').value = new Date().toISOString().slice(0,10);
     openModal('overlayLoan');
   });
   document.getElementById('btnAddGoal').addEventListener('click', ()=> {
@@ -1783,6 +1804,7 @@
     const form = document.getElementById('formLoan');
     fillForm(form, item);
     form.querySelector('[name=autoTrack]').value = item.autoTrack ? 'yes' : '';
+    if(!form.querySelector('[name=balanceAsOf]').value) form.querySelector('[name=balanceAsOf]').value = item.balanceAsOf || new Date().toISOString().slice(0,10);
     document.querySelector('#overlayLoan h3').textContent = 'Edit loan';
     document.querySelector('#formLoan button[type=submit]').textContent = 'Update loan';
     openModal('overlayLoan');
@@ -1868,7 +1890,7 @@
           loanName: f.get('loanName'), borrower: f.get('borrower'), lender: f.get('lender'),
           originalAmount: Number(f.get('originalAmount')||0), outstandingBalance: Number(f.get('outstandingBalance')),
           emi: Number(f.get('emi')||0), interestRate: Number(f.get('interestRate')||0),
-          startDate: f.get('startDate'), endDate: f.get('endDate'), status: f.get('status'),
+          startDate: f.get('startDate'), endDate: f.get('endDate'), balanceAsOf: f.get('balanceAsOf'), status: f.get('status'),
           emiDay: f.get('emiDay') ? Number(f.get('emiDay')) : null,
           autoTrack: autoTrack,
           // keep existing accrual progress — only reset it if auto-track was just turned on for the first time
@@ -1880,7 +1902,7 @@
         id: uid(), loanName: f.get('loanName'), borrower: f.get('borrower'), lender: f.get('lender'),
         originalAmount: Number(f.get('originalAmount')||0), outstandingBalance: Number(f.get('outstandingBalance')),
         emi: Number(f.get('emi')||0), interestRate: Number(f.get('interestRate')||0),
-        startDate: f.get('startDate'), endDate: f.get('endDate'), status: f.get('status'),
+        startDate: f.get('startDate'), endDate: f.get('endDate'), balanceAsOf: f.get('balanceAsOf'), status: f.get('status'),
         emiDay: f.get('emiDay') ? Number(f.get('emiDay')) : null,
         autoTrack: autoTrack,
         lastAccrualDate: autoTrack ? f.get('startDate') : ''
@@ -1903,13 +1925,20 @@
     const amount = Number(f.get('amount'));
     const date = f.get('date');
     const note = f.get('note')||'';
+    if(!Number.isFinite(amount) || amount<=0 || !date){ showToast('Enter a valid positive amount and date', true); return; }
     let delta;
     let logType;
     if(type==='Prepayment'){ delta = -amount; logType='Prepayment'; }
     else if(type==='Adjustment-increase'){ delta = amount; logType='Adjustment'; }
     else { delta = -amount; logType='Adjustment'; }
-    loan.outstandingBalance = Math.max(0, Math.round(Number(loan.outstandingBalance||0) + delta));
-    if(loan.outstandingBalance <= 0) loan.status = 'Closed';
+    const confirmedAsOf=loan.balanceAsOf||'';
+    const applyToCurrent=date>confirmedAsOf || !confirmedAsOf;
+    if(!applyToCurrent && !confirm('This transaction is on/before the balance confirmation date. Add it to history only without changing the confirmed balance?')) return;
+    if(applyToCurrent){
+      loan.outstandingBalance = Math.max(0, Math.round((Number(loan.outstandingBalance||0) + delta)*100)/100);
+      loan.balanceAsOf = date;
+      if(loan.outstandingBalance <= 0) loan.status = 'Closed';
+    }
     state.loanLedger.push({ id: uid(), loanId, date, type: logType, amount: delta, principalComponent: 0, interestComponent: 0, note });
     render();
     e.target.reset();
@@ -1925,6 +1954,50 @@
     populateLoanSelect(loanId);
     document.querySelector('#formLoanAdjust [name=date]').value = new Date().toISOString().slice(0,10);
     openModal('overlayLoanAdjust');
+  });
+
+  function openLoanPayment(loanId){
+    const sel = document.getElementById('paymentLoanSelect');
+    sel.innerHTML = state.liabilities.filter(l=>l.status!=='Closed').map(l=>`<option value="${l.id}">${l.loanName}</option>`).join('');
+    if(loanId) sel.value = loanId;
+    const form = document.getElementById('formLoanPayment');
+    form.reset();
+    if(loanId) sel.value = loanId;
+    form.querySelector('[name=date]').value = new Date().toISOString().slice(0,10);
+    const loan = state.liabilities.find(l=>l.id===sel.value);
+    if(loan) form.querySelector('[name=amount]').value = loan.emi || '';
+    openModal('overlayLoanPayment');
+  }
+  document.addEventListener('click', (e)=>{
+    const btn = e.target.closest('[data-record-emi]');
+    if(btn) openLoanPayment(btn.dataset.recordEmi);
+  });
+  document.getElementById('formLoanPayment').addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const f = new FormData(e.target), loanId=f.get('loanId'), loan=state.liabilities.find(l=>l.id===loanId);
+    if(!loan){ showToast('Choose a valid loan', true); return; }
+    const date=f.get('date'), amount=Number(f.get('amount')), current=Number(loan.outstandingBalance)||0;
+    if(!date || !Number.isFinite(amount) || amount<=0){ showToast('Enter a valid payment date and amount', true); return; }
+    if(state.loanLedger.some(x=>x.loanId===loanId && x.type==='EMI' && x.date===date)){ showToast('An EMI is already recorded for this loan on that date. Remove or correct it first.', true); return; }
+    const rate=(Number(loan.interestRate)||0)/1200;
+    const enteredPrincipal=f.get('principalComponent');
+    const enteredInterest=f.get('interestComponent');
+    const interest=enteredInterest!=='' ? Number(enteredInterest) : Math.round(current*rate*100)/100;
+    const principal=enteredPrincipal!=='' ? Number(enteredPrincipal) : Math.max(0, Math.round((amount-interest)*100)/100);
+    if(!Number.isFinite(principal)||principal<0||principal>current+0.01||!Number.isFinite(interest)||interest<0){ showToast('Principal/interest split is invalid for the current balance', true); return; }
+    const totalSplit=principal+interest;
+    if(Math.abs(totalSplit-amount)>1){ showToast('Principal plus interest should match the EMI amount (within ₹1). Check the lender split or leave both split fields blank.', true); return; }
+    // A recorded EMI reduces the tracked balance by principal only. Do not roll a lender-confirmed snapshot backward.
+    const snapshotDate=loan.balanceAsOf||'';
+    if(snapshotDate && date<=snapshotDate){
+      if(!confirm('This payment date is on/before the balance confirmation date. Record it in history without changing the confirmed balance?')) return;
+    } else {
+      loan.outstandingBalance=Math.max(0,Math.round((current-principal)*100)/100);
+      loan.balanceAsOf=date;
+      if(loan.outstandingBalance<=0) loan.status='Closed';
+    }
+    state.loanLedger.push({id:uid(),loanId,date,type:'EMI',amount,principalComponent:principal,interestComponent:interest,splitSource:(enteredPrincipal!=='' && enteredInterest!=='')?'Lender split entered':'Estimated/partly estimated split',note:f.get('note')||''});
+    render(); persist('liabilities'); persist('loanLedger'); closeModal('overlayLoanPayment'); e.target.reset(); showToast('Confirmed EMI recorded');
   });
 
   document.getElementById('formGoal').addEventListener('submit', (e)=>{
@@ -2347,7 +2420,7 @@
   }
 
   function nextEmiDate(loan){
-    const anchor = loan.lastAccrualDate || loan.startDate;
+    const anchor = loan.balanceAsOf || loan.startDate;
     if(!anchor || !loan.emiDay) return null;
     const last = new Date(anchor);
     let cursor = new Date(last.getFullYear(), last.getMonth(), Number(loan.emiDay));
@@ -2355,59 +2428,34 @@
     return cursor;
   }
 
-  // ---------- Full amortization schedule (matches the Excel "Loan Breakup" sheet) ----------
-  // Past months come from actually-logged ledger entries (real EMI + any prepayments already
-  // made). From the last logged month onward, it projects forward using the same reducing-
-  // balance formula, so the table always continues seamlessly to payoff.
+  // ---------- Forward amortization forecast ----------
+  // Forecast begins at the latest tracked principal snapshot; confirmed transactions are kept
+  // in the separate payment-history ledger. This avoids presenting estimated history as fact.
   let scheduleLoanId = null;
 
   function computeLoanSchedule(loan){
-    const rows = [];
-    const startingBalance = Number(loan.originalAmount || loan.outstandingBalance || 0);
-    if(startingBalance <= 0 || !loan.startDate || !loan.emi) return rows;
-
-    const emiEntries = state.loanLedger.filter(e=>e.loanId===loan.id && e.type==='EMI').sort((a,b)=> a.date.localeCompare(b.date));
-    const extraByMonth = {}; // 'YYYY-MM' -> total extra payment that month
-    state.loanLedger.filter(e=>e.loanId===loan.id && e.type!=='EMI').forEach(e=>{
-      const key = e.date.slice(0,7);
-      extraByMonth[key] = (extraByMonth[key]||0) + Math.abs(Number(e.amount||0));
-    });
-
-    let opening = startingBalance;
-    let monthIndex = 0;
-    let cursorDate = new Date(loan.startDate);
-    const rate = Number(loan.interestRate||0)/12/100;
-
-    // Actual, already-logged months first — real numbers, not re-derived.
-    emiEntries.forEach(entry=>{
-      monthIndex++;
-      const extra = extraByMonth[entry.date.slice(0,7)] || 0;
-      const closing = Math.max(0, opening - Number(entry.principalComponent||0) - extra);
-      rows.push({
-        month: monthIndex, date: entry.date, opening,
-        emi: entry.amount, interest: entry.interestComponent, principal: entry.principalComponent,
-        extra, closing, actual: true
-      });
-      opening = closing;
-      cursorDate = new Date(entry.date);
-    });
-
-    // Project forward from here using the standard formula, until payoff or a sane cap.
-    let projCursor = new Date(cursorDate.getFullYear(), cursorDate.getMonth()+1, Number(loan.emiDay||cursorDate.getDate()));
-    let guard = 0;
-    while(opening > 0 && guard < 600){
-      monthIndex++;
-      const dateStr = projCursor.toISOString().slice(0,10);
-      const interest = opening * rate;
-      let principal = Number(loan.emi) - interest;
-      if(principal < 0) principal = 0;
-      if(principal > opening) principal = opening;
-      const extra = extraByMonth[dateStr.slice(0,7)] || 0;
-      const closing = Math.max(0, opening - principal - extra);
-      rows.push({ month: monthIndex, date: dateStr, opening, emi: Number(loan.emi), interest, principal, extra, closing, actual: false });
-      opening = closing;
-      projCursor = new Date(projCursor.getFullYear(), projCursor.getMonth()+1, Number(loan.emiDay||projCursor.getDate()));
-      guard++;
+    const rows=[];
+    let balance=Math.max(0,Number(loan.outstandingBalance)||0);
+    const emi=Math.max(0,Number(loan.emi)||0);
+    const rate=Math.max(0,Number(loan.interestRate)||0)/1200;
+    if(balance<=0 || emi<=0) return rows;
+    const asOf=loan.balanceAsOf || new Date().toISOString().slice(0,10);
+    const anchor=new Date(asOf+'T12:00:00');
+    const day=Math.min(28,Math.max(1,Number(loan.emiDay)||anchor.getDate()));
+    let due=new Date(anchor.getFullYear(),anchor.getMonth(),day,12);
+    if(due<=anchor) due=new Date(anchor.getFullYear(),anchor.getMonth()+1,day,12);
+    let month=0, guard=0;
+    while(balance>0.005 && guard<600){
+      month++; guard++;
+      const date=due.getFullYear()+'-'+String(due.getMonth()+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+      const interest=Math.round(balance*rate*100)/100;
+      if(emi<=interest && rate>0) return rows;
+      const payment=Math.min(emi,balance+interest);
+      const principal=Math.min(balance,Math.max(0,Math.round((payment-interest)*100)/100));
+      const closing=Math.max(0,Math.round((balance-principal)*100)/100);
+      rows.push({month,date,opening:balance,emi:payment,interest,principal,extra:0,closing,actual:false});
+      balance=closing;
+      due=new Date(due.getFullYear(),due.getMonth()+1,day,12);
     }
     return rows;
   }
@@ -2457,7 +2505,7 @@
     if(!loan){ holder.innerHTML = `<div class="glass empty"><b>Loan not found</b>It may have been removed.</div>`; return; }
     const rows = computeLoanSchedule(loan);
     if(rows.length===0){
-      holder.innerHTML = `<div class="glass empty"><b>Not enough info to build a schedule</b>This loan needs an original amount, start date, and EMI set — edit it to add those.</div>`;
+      holder.innerHTML = `<div class="glass empty"><b>Not enough info to build a schedule</b>This forecast needs a current principal balance and monthly EMI. Add those values in the loan form to build the schedule.</div>`;
       return;
     }
     const today = new Date().toISOString().slice(0,10);
@@ -2482,44 +2530,13 @@
         <td class="num">${fmtINR(r.emi)}</td>
         <td class="num">${fmtINR(r.interest)}</td>
         <td class="num pos">${fmtINR(r.principal)}</td>
-        <td class="num"><input type="number" class="sched-extra-input" data-loan-id="${loan.id}" data-date="${r.date}" value="${r.extra||''}" placeholder="0" min="0" step="1"></td>
+        <td class="num">${fmtINR(r.extra||0)}</td>
         <td class="num ${r.closing<=0?'pos':''}">${fmtINR(r.closing)}</td>
       </tr>`).join('')}
       </tbody></table></div>
-      <p class="desc" style="margin-top:8px;">Editing "Extra Payment" for any month logs it as a real prepayment on that date and recalculates every balance from there — same effect as the "prepay / adjust" button, just done inline per month.</p>`;
+      <p class="desc" style="margin-top:8px;">The schedule is a forecast from the latest tracked principal. Record a completed prepayment with the loan row action; use the scenario calculator above to test a planned prepayment without changing history.</p>`;
   }
 
-  document.addEventListener('change', (e)=>{
-    const input = e.target.closest('.sched-extra-input');
-    if(!input) return;
-    const loanId = input.dataset.loanId, date = input.dataset.date;
-    const loan = state.liabilities.find(l=>l.id===loanId);
-    if(!loan) return;
-    const newAmount = Number(input.value||0);
-
-    // Replace any existing prepayment/adjustment already logged for this loan on this exact date.
-    const existingIdx = state.loanLedger.findIndex(x=>x.loanId===loanId && x.date===date && x.type!=='EMI');
-    const oldAmount = existingIdx>=0 ? Math.abs(Number(state.loanLedger[existingIdx].amount||0)) : 0;
-    if(existingIdx>=0) state.loanLedger.splice(existingIdx,1);
-    if(newAmount > 0){
-      state.loanLedger.push({ id: uid(), loanId, date, type:'Prepayment', amount: -newAmount, principalComponent:0, interestComponent:0, note:'Entered via schedule' });
-    }
-
-    if(newAmount !== oldAmount){
-      // Keep the loan-level outstanding balance in sync with what the schedule now shows as of today.
-      const rows = computeLoanSchedule(loan);
-      const today = new Date().toISOString().slice(0,10);
-      const asOf = [...rows].reverse().find(r=>r.date<=today) || rows[0];
-      if(asOf){
-        loan.outstandingBalance = Math.round(asOf.closing);
-        if(loan.outstandingBalance<=0) loan.status = 'Closed';
-      }
-      persist('liabilities');
-      persist('loanLedger');
-      showToast('Schedule updated');
-    }
-    render();
-  });
 
   function populateLoanSelect(preselectId){
     const sel = document.getElementById('adjustLoanSelect');
@@ -2546,6 +2563,8 @@
         const next = l.status!=='Closed' ? nextEmiDate(l) : null;
         totalOutstanding += Number(l.outstandingBalance||0);
         totalEmi += Number(l.emi||0);
+        const payoffEstimate=estimateLoanPayoff(l);
+        if(payoffEstimate.interest!==null){ totalFutureInterest += payoffEstimate.interest; totalFuturePayments += payoffEstimate.payments; }
         return `<tr>
         <td title="${l.endDate?'ends '+dateLabel(l.endDate):''}">${l.loanName}</td>
         <td>${l.borrower||'—'}</td><td>${l.lender||'—'}</td>
@@ -2554,7 +2573,7 @@
         <td>${next?dateLabel(next.toISOString().slice(0,10)):'—'}</td>
         <td class="num neg">${fmtINR(l.outstandingBalance)}</td>
         <td><span class="tag ${l.status==='Active'?'active':'closed'}">${l.status||'Active'}</span></td>
-        <td class="row-actions">${l.status!=='Closed'?`<button data-adjust-loan="${l.id}">prepay / adjust</button>`:''} <button data-view-schedule="${l.id}">schedule</button></td>
+        <td class="row-actions">${l.status!=='Closed'?`<button data-record-emi="${l.id}">record EMI</button> <button data-adjust-loan="${l.id}">prepay / adjust</button>`:''} <button data-view-schedule="${l.id}">schedule</button></td>
         <td class="row-actions"><button data-edit="liabilities::${l.id}">edit</button> <button data-delete="liabilities::${l.id}">remove</button></td>
       </tr>`;}).join('');
       const tableHtml = `<table class="ledger"><thead><tr>
@@ -2571,10 +2590,15 @@
     renderLoanSchedule();
   }
 
+  document.getElementById('loanRecordsFilter')?.addEventListener('change', renderLoanRecords);
   function renderLoanRecords(){
     const holder = document.getElementById('loanRecordsHolder');
     if(!holder) return;
-    const rows = [...state.loanLedger].sort((a,b)=> b.date.localeCompare(a.date)).slice(0,40);
+    const filter=document.getElementById('loanRecordsFilter');
+    if(filter){ const selected=filter.value||'All'; filter.innerHTML='<option value="All">All loans</option>'+state.liabilities.map(l=>`<option value="${l.id}">${l.loanName}</option>`).join(''); filter.value=state.liabilities.some(l=>l.id===selected)?selected:'All'; }
+    const selectedLoan=filter?.value||'All';
+    const allRows=[...state.loanLedger].filter(e=>selectedLoan==='All'||e.loanId===selectedLoan).sort((a,b)=> b.date.localeCompare(a.date));
+    const rows=allRows.slice(0,40);
     if(rows.length===0){
       holder.innerHTML = `<div class="glass empty"><b>No payment records yet</b>Confirm/log an EMI or completed prepayment to see records here.</div>`;
       return;
@@ -2587,12 +2611,12 @@
         return `<div class="glass ledger-card">
           <div class="lc-top"><span class="lc-title">${loanName(e.loanId)}</span><span class="lc-amount ${amtCls}">${amtDisplay}</span></div>
           <div class="lc-date">${dateLabel(e.date)} · ${e.type}</div>
-          ${(e.principalComponent||e.interestComponent)?`<div class="lc-meta">${e.principalComponent?`Principal ${fmtINR(e.principalComponent)}`:''}${e.interestComponent?` · Interest ${fmtINR(e.interestComponent)}`:''}</div>`:''}
+          ${(e.principalComponent||e.interestComponent)?`<div class="lc-meta">${e.principalComponent?`Principal ${fmtINR(e.principalComponent)}`:''}${e.interestComponent?` · Interest ${fmtINR(e.interestComponent)}`:''}${e.splitSource?` · ${e.splitSource}`:''}</div>`:''}
           ${e.note?`<div class="lc-meta">${e.note}</div>`:''}
-          <div class="lc-actions"><button data-delete="loanLedger::${e.id}">remove</button></div>
+          
         </div>`;
       }).join('')}</div>
-      ${state.loanLedger.length>40?`<p class="desc" style="margin-top:8px;">Showing the most recent 40 of ${state.loanLedger.length} records.</p>`:''}`;
+      ${allRows.length>40?`<p class="desc" style="margin-top:8px;">Showing the most recent 40 of ${allRows.length} records.</p>`:''}`;
       return;
     }
     holder.innerHTML = `<div class="glass table-card"><table class="ledger"><thead><tr>
@@ -2603,11 +2627,11 @@
         <td class="num ${e.type==='EMI'?'':(e.amount<0?'pos':'neg')}">${e.type==='EMI'?fmtINR(e.amount):(e.amount<0?'−':'+')+fmtINR(Math.abs(e.amount))}</td>
         <td class="num">${e.principalComponent?fmtINR(e.principalComponent):'—'}</td>
         <td class="num">${e.interestComponent?fmtINR(e.interestComponent):'—'}</td>
-        <td class="sub">${e.note||''}</td>
-        <td class="row-actions"><button data-delete="loanLedger::${e.id}">remove</button></td>
+        <td class="sub">${e.splitSource?e.splitSource+' · ':''}${e.note||''}</td>
+        <td></td>
       </tr>`).join('')}
       </tbody></table></div>
-      ${state.loanLedger.length>40?`<p class="desc" style="margin-top:8px;">Showing the most recent 40 of ${state.loanLedger.length} records.</p>`:''}`;
+      ${allRows.length>40?`<p class="desc" style="margin-top:8px;">Showing the most recent 40 of ${allRows.length} records.</p>`:''}`;
   }
 
 
