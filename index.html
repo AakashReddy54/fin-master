@@ -934,6 +934,25 @@
   </div>
 </div>
 
+<div class="overlay" id="overlayLoanRecordEdit">
+  <div class="modal glass">
+    <h3>Edit payment record</h3>
+    <form id="formLoanRecordEdit">
+      <input type="hidden" name="recordId">
+      <div class="field"><label>Loan</label><select name="loanId" required id="editLoanRecordLoan"></select></div>
+      <div class="grid2">
+        <div class="field"><label>Date</label><input type="date" name="date" required></div>
+        <div class="field"><label>Amount (₹)</label><input type="number" name="amount" min="0.01" step="0.01" required></div>
+        <div class="field"><label>Principal (₹)</label><input type="number" name="principalComponent" min="0" step="0.01"></div>
+        <div class="field"><label>Interest (₹)</label><input type="number" name="interestComponent" min="0" step="0.01"></div>
+      </div>
+      <div class="field"><label>Note</label><input type="text" name="note"></div>
+      <p class="desc">Editing history does not change the loan’s confirmed outstanding balance. Reconcile the balance separately against your lender statement.</p>
+      <div class="modal-actions"><button type="button" class="btn-secondary" data-close>Cancel</button><button type="submit" class="btn-primary">Save changes</button></div>
+    </form>
+  </div>
+</div>
+
 <div class="overlay" id="overlaySnapshot">
   <div class="modal glass">
     <h3>Log month-end snapshot</h3>
@@ -1472,8 +1491,9 @@
   }
 
   // ---------- Local cache (safety net + instant load) ----------
+  const deletedIdsByKey = {};
   function cacheToLocal(){
-    try{ localStorage.setItem(LS_DATA_KEY, JSON.stringify(state)); }catch(e){ /* storage full/unavailable — non-fatal */ }
+    try{ localStorage.setItem(LS_DATA_KEY, JSON.stringify(Object.assign({}, state, {_syncDeletedIds:deletedIdsByKey}))); }catch(e){ /* storage full/unavailable — non-fatal */ }
   }
   function loadFromLocalCache(){
     try{
@@ -1481,6 +1501,7 @@
       if(!raw) return false;
       const parsed = JSON.parse(raw);
       DOC_KEYS.forEach(k=>{ if(Array.isArray(parsed[k])) state[k] = parsed[k]; });
+      if(parsed._syncDeletedIds && typeof parsed._syncDeletedIds==='object') Object.assign(deletedIdsByKey, parsed._syncDeletedIds);
       return true;
     }catch(e){ return false; }
   }
@@ -1511,6 +1532,19 @@
   window.addEventListener('online', ()=> setStatus(firebaseReady ? 'connected' : null, firebaseReady ? 'Connected' : 'Offline'));
   window.addEventListener('offline', ()=> setStatus('error', 'Offline — changes saved locally'));
 
+  function mergeSyncedItems(remoteItems, localItems, deletedIds){
+    const removed = new Set(Array.isArray(deletedIds) ? deletedIds : []);
+    const byId = new Map();
+    (remoteItems||[]).forEach(item=>{ if(item && item.id && !removed.has(item.id)) byId.set(item.id,item); });
+    (localItems||[]).forEach(item=>{
+      if(!item || !item.id || removed.has(item.id)) return;
+      const prior=byId.get(item.id);
+      const localTime=Number(item._syncUpdatedAt)||0, priorTime=Number(prior?._syncUpdatedAt)||0;
+      if(!prior || localTime>priorTime) byId.set(item.id,item);
+    });
+    return [...byId.values()];
+  }
+
   function subscribeAll(){
     unsubscribers.forEach(u=>u());
     unsubscribers = [];
@@ -1520,16 +1554,21 @@
       const unsub = db.collection(COLLECTION).doc(key).onSnapshot(
         { includeMetadataChanges: true },
         (snap)=>{
+          let needsSync=false;
           if(snap.exists){
             const data = snap.data();
-            state[key] = Array.isArray(data.items) ? data.items : [];
+            const remoteItems = Array.isArray(data.items) ? data.items : [];
+            const remoteDeleted = Array.isArray(data.deletedIds) ? data.deletedIds : [];
+            deletedIdsByKey[key] = [...new Set([...(deletedIdsByKey[key]||[]), ...remoteDeleted])];
+            state[key] = mergeSyncedItems(remoteItems, state[key], deletedIdsByKey[key]);
             cacheToLocal();
+            // Merge local-only entries after Firebase is marked ready below.
+            needsSync = state[key].length !== remoteItems.filter(x=>!deletedIdsByKey[key].includes(x.id)).length || remoteDeleted.length !== deletedIdsByKey[key].length;
           } else if(state[key] && state[key].length > 0 && !seededFromLocal.has(key)){
             // Doc doesn't exist in Firestore yet, but we have local data (from cache or this
             // session) — never let a missing/empty cloud doc silently wipe it. Push it up instead.
             seededFromLocal.add(key);
-            db.collection(COLLECTION).doc(key).set({ items: state[key], updatedAt: Date.now() })
-              .catch(err=> console.error('Seed-from-local failed for '+key, err));
+            needsSync=true;
           }
           loadedKeys.add(key);
           if(loadedKeys.size >= DOC_KEYS.length){
@@ -1539,6 +1578,7 @@
             seedAssetClasses();
           }
           firebaseReady = true;
+          if(needsSync) persist(key);
 
           // Accurate status: this doc's write is still pending server ack, or it's fully synced.
           if(snap.metadata.hasPendingWrites) pendingWriteDocs.add(key);
@@ -1567,14 +1607,18 @@
     showToast(firebaseReady ? 'Saved' : 'Saved locally — will sync once connected');
     if(!firebaseReady || !db) return;
     try{
-      await db.collection(COLLECTION).doc(k).set({ items: state[k], updatedAt: Date.now() });
-      // Status itself is driven by the snapshot listener's metadata above, not this promise —
-      // a successful await here just confirms the server has ack'd, nothing more to do.
+      const ref=db.collection(COLLECTION).doc(k);
+      await db.runTransaction(async tx=>{
+        const snap=await tx.get(ref);
+        const data=snap.exists?snap.data():{};
+        const deleted=[...new Set([...(Array.isArray(data.deletedIds)?data.deletedIds:[]), ...(deletedIdsByKey[k]||[])])];
+        const items=mergeSyncedItems(Array.isArray(data.items)?data.items:[], state[k], deleted);
+        deletedIdsByKey[k]=deleted;
+        tx.set(ref,{items,deletedIds:deleted,updatedAt:Date.now()});
+      });
     }catch(e){
-      // This promise can reject on a transient hiccup even though the write already landed
-      // in Firestore's local queue (and the snapshot listener above will reflect that).
-      // Don't flip the status pill from here — that's what caused the false "red" flashes.
-      console.warn('persist() write promise did not resolve cleanly (data is still queued locally):', e.code || e.message);
+      console.warn('Transactional sync did not complete; changes remain in local cache:',e.code||e.message);
+      setStatus('error','Sync pending — local copy kept');
     }
   }
 
@@ -2041,6 +2085,49 @@
     persist('history');
   });
 
+  // Payment-history maintenance: deliberately does not alter the lender-confirmed balance.
+  document.addEventListener('click',(e)=>{
+    const editBtn=e.target.closest('[data-edit-loan-record]');
+    if(editBtn){
+      const item=state.loanLedger.find(x=>x.id===editBtn.dataset.editLoanRecord);
+      if(!item){showToast('Payment record not found — it may have been removed on another device',true);return;}
+      const form=document.getElementById('formLoanRecordEdit');
+      form.reset(); form.elements.recordId.value=item.id;
+      const sel=document.getElementById('editLoanRecordLoan');
+      sel.innerHTML=state.liabilities.map(l=>`<option value="${l.id}">${l.loanName}</option>`).join('');
+      sel.value=item.loanId;
+      form.elements.date.value=item.date||'';
+      form.elements.amount.value=Math.abs(Number(item.amount)||0);
+      form.elements.principalComponent.value=item.principalComponent??'';
+      form.elements.interestComponent.value=item.interestComponent??'';
+      form.elements.note.value=item.note||'';
+      openModal('overlayLoanRecordEdit'); return;
+    }
+    const delBtn=e.target.closest('[data-delete-loan-record]');
+    if(delBtn){
+      const id=delBtn.dataset.deleteLoanRecord;
+      if(!confirm('Delete this payment-history record? The confirmed outstanding balance will not change.')) return;
+      state.loanLedger=state.loanLedger.filter(x=>x.id!==id);
+      deletedIdsByKey.loanLedger=[...new Set([...(deletedIdsByKey.loanLedger||[]),id])];
+      render(); persist('loanLedger'); return;
+    }
+  });
+  document.getElementById('formLoanRecordEdit').addEventListener('submit',(e)=>{
+    e.preventDefault();
+    const f=new FormData(e.target), id=f.get('recordId');
+    const item=state.loanLedger.find(x=>x.id===id);
+    if(!item){showToast('Payment record no longer exists; refresh and check the other device.',true);return;}
+    const amount=Number(f.get('amount'));
+    const principal=f.get('principalComponent')===''?null:Number(f.get('principalComponent'));
+    const interest=f.get('interestComponent')===''?null:Number(f.get('interestComponent'));
+    if(!f.get('date')||!Number.isFinite(amount)||amount<=0|| (principal!==null&&(!Number.isFinite(principal)||principal<0)) || (interest!==null&&(!Number.isFinite(interest)||interest<0))){showToast('Enter valid date and non-negative amounts.',true);return;}
+    if(item.type==='EMI' && principal!==null && interest!==null && Math.abs(principal+interest-amount)>1){showToast('Principal plus interest should match the EMI amount (within ₹1).',true);return;}
+    item.loanId=f.get('loanId'); item.date=f.get('date'); item.amount=item.amount<0?-amount:amount;
+    item.principalComponent=principal===null?0:principal; item.interestComponent=interest===null?0:interest;
+    item.note=f.get('note')||''; item._syncUpdatedAt=Date.now();
+    render(); persist('loanLedger'); closeModal('overlayLoanRecordEdit'); showToast('Payment history updated; loan balance unchanged.');
+  });
+
   // ---------- Delete handlers ----------
   document.addEventListener('click', (e)=>{
     const btn = e.target.closest('[data-delete]');
@@ -2048,6 +2135,7 @@
     const [coll, id] = btn.dataset.delete.split('::');
     if(!confirm('Remove this entry?')) return;
     state[coll] = state[coll].filter(x=>x.id!==id);
+    deletedIdsByKey[coll]=[...new Set([...(deletedIdsByKey[coll]||[]),id])];
     render();
     persist(coll);
   });
@@ -2625,7 +2713,7 @@
           <div class="lc-date">${dateLabel(e.date)} · ${e.type}</div>
           ${(e.principalComponent||e.interestComponent)?`<div class="lc-meta">${e.principalComponent?`Principal ${fmtINR(e.principalComponent)}`:''}${e.interestComponent?` · Interest ${fmtINR(e.interestComponent)}`:''}${e.splitSource?` · ${e.splitSource}`:''}</div>`:''}
           ${e.note?`<div class="lc-meta">${e.note}</div>`:''}
-          
+          <div class="lc-actions"><button data-edit-loan-record="${e.id}">edit</button> <button data-delete-loan-record="${e.id}">delete</button></div>
         </div>`;
       }).join('')}</div>
       ${allRows.length>40?`<p class="desc" style="margin-top:8px;">Showing the most recent 40 of ${allRows.length} records.</p>`:''}`;
@@ -2640,7 +2728,7 @@
         <td class="num">${e.principalComponent?fmtINR(e.principalComponent):'—'}</td>
         <td class="num">${e.interestComponent?fmtINR(e.interestComponent):'—'}</td>
         <td class="sub">${e.splitSource?e.splitSource+' · ':''}${e.note||''}</td>
-        <td></td>
+        <td class="row-actions"><button data-edit-loan-record="${e.id}">edit</button> <button data-delete-loan-record="${e.id}">delete</button></td>
       </tr>`).join('')}
       </tbody></table></div>
       ${allRows.length>40?`<p class="desc" style="margin-top:8px;">Showing the most recent 40 of ${allRows.length} records.</p>`:''}`;
