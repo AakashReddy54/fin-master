@@ -593,7 +593,10 @@
     <div id="loansTableHolder"></div>
     <div class="panel-head" style="margin-top:20px;">
       <div><h2>Amortization schedule</h2><div class="hint" id="scheduleLoanHint">Click "schedule" on a loan above to see its full month-by-month breakup</div></div>
-      <select id="scheduleLoanSelect" style="display:none;"></select>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <select id="scheduleLoanSelect" style="display:none;"></select>
+        <button type="button" class="btn-secondary" id="btnCloseLoanSchedule" style="display:none;" aria-label="Close amortization schedule">Close schedule</button>
+      </div>
     </div>
     <div id="loanScheduleHolder"></div>
     <div class="panel-head" style="margin-top:20px;">
@@ -2487,12 +2490,21 @@
     renderLoanSchedule();
   });
 
+  document.getElementById('btnCloseLoanSchedule').addEventListener('click', ()=>{
+    scheduleLoanId = null;
+    document.getElementById('scheduleLoanSelect').style.display = 'none';
+    document.getElementById('btnCloseLoanSchedule').style.display = 'none';
+    document.getElementById('scheduleLoanHint').style.display = '';
+    document.getElementById('loanScheduleHolder').innerHTML = '';
+  });
+
   document.addEventListener('click', (e)=>{
     const btn = e.target.closest('[data-view-schedule]');
     if(!btn) return;
     scheduleLoanId = btn.dataset.viewSchedule;
     populateScheduleLoanSelect();
     document.getElementById('scheduleLoanSelect').style.display = '';
+    document.getElementById('btnCloseLoanSchedule').style.display = '';
     document.getElementById('scheduleLoanHint').style.display = 'none';
     renderLoanSchedule();
     document.getElementById('loanScheduleHolder').scrollIntoView({ behavior:'smooth', block:'nearest' });
