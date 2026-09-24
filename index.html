@@ -850,10 +850,10 @@
       <div class="grid2">
         <div class="field"><label>EMI due day of month</label><input type="number" name="emiDay" min="1" max="28" placeholder="e.g. 9"></div>
         <div class="field"><label>Auto-track monthly EMI</label>
-          <select name="autoTrack"><option value="">No — I'll log payments myself</option><option value="yes">Yes — deduct automatically each month</option></select>
+          <select name="autoTrack"><option value="">No — I'll log payments myself</option><option value="yes">Yes — track EMI schedule automatically</option></select>
         </div>
       </div>
-      <p class="desc" style="margin-top:0;">With auto-track on, opening this app after the due date will catch up any EMIs since your last visit — splitting each into principal and interest and reducing the balance. No manual monthly entry needed. Use "prepay / adjust" on the loan row for anything outside the regular EMI.</p>
+      <p class="desc" style="margin-top:0;">Auto-track keeps the EMI schedule and next due date visible. It does not confirm that a payment was made or change your actual balance. Log/confirm each EMI and any completed prepayment using the payment records. Use the schedule below to estimate future interest and test planned prepayments.</p>
       <div class="modal-actions">
         <button type="button" class="btn-secondary" data-close>Cancel</button>
         <button type="submit" class="btn-primary">Save loan</button>
@@ -1979,6 +1979,39 @@
   // ---------- Computations ----------
   function totalAssets(){ return state.assets.filter(a=>a.status!=='Closed').reduce((s,a)=>s+(Number(a.currentValue)||0),0); }
   function totalLiabilities(){ return state.liabilities.filter(l=>l.status!=='Closed').reduce((s,l)=>s+(Number(l.outstandingBalance)||0),0); }
+
+  // Projection-only amortization from the latest lender-confirmed principal.
+  // This is an estimate of future scheduled cash outflow, not a current liability.
+  function estimateLoanPayoff(loan, extraAmount=0, extraDate=''){
+    let balance = Math.max(0, Number(loan.outstandingBalance)||0);
+    const emi = Math.max(0, Number(loan.emi)||0);
+    const monthlyRate = Math.max(0, Number(loan.interestRate)||0)/1200;
+    if(balance<=0) return {months:0, interest:0, payments:0, paidOff:true};
+    if(emi<=0 || (monthlyRate>0 && emi<=balance*monthlyRate)) return {months:null, interest:null, payments:null, paidOff:false};
+    const now = new Date();
+    const dueDay = Math.min(28, Math.max(1, Number(loan.emiDay)||now.getDate()));
+    const firstDue = new Date(now.getFullYear(), now.getMonth(), dueDay);
+    if(dueDay < now.getDate()) firstDue.setMonth(firstDue.getMonth()+1);
+    const dueMonth = extraDate ? extraDate.slice(0,7) : '';
+    let months=0, interestTotal=0, payments=0;
+    while(balance>0.005 && months<1200){
+      months++;
+      const interest = balance*monthlyRate;
+      const principalFromEmi = Math.min(balance, Math.max(0, emi-interest));
+      const actualEmi = Math.min(emi, balance+interest);
+      balance = Math.max(0, balance+interest-actualEmi);
+      interestTotal += interest; payments += actualEmi;
+      if(extraAmount>0 && dueMonth && firstDue){
+        const due = new Date(firstDue.getFullYear(), firstDue.getMonth()+months-1, Number(loan.emiDay||firstDue.getDate()));
+        if(due.toISOString().slice(0,7)===dueMonth){
+          const extra = Math.min(balance, extraAmount);
+          balance -= extra; payments += extra;
+        }
+      }
+    }
+    return {months: balance<=0.005?months:null, interest:interestTotal, payments, paidOff:balance<=0.005};
+  }
+
   function currentMonthKey(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
   function totalIncomeThisMonth(){
     const m = currentMonthKey();
@@ -2122,61 +2155,12 @@
 
   // ---------- Auto EMI reconciliation ----------
   // Runs once per page load, right after all Firestore data has arrived.
-  // For every loan with auto-tracking on, catches up any EMI cycles that
-  // passed since the last check — splits each into principal/interest
-  // (reducing-balance method) and logs it, so no manual monthly entry is needed.
+  // Auto-track is display/projection-only. A due date is not proof of payment.
   function reconcileLoans(){
-    if(!firebaseReady || reconciled) return;
-    reconciled = true;
-    let changed = false;
-    const today = new Date();
-    state.liabilities.forEach(loan=>{
-      if(loan.status==='Closed' || !loan.autoTrack || !loan.emiDay) return;
-      let outstanding = Number(loan.outstandingBalance||0);
-      if(outstanding<=0) return;
-      const anchor = loan.lastAccrualDate || loan.startDate;
-      if(!anchor) return;
-      let last = new Date(anchor);
-      let cursor = new Date(last.getFullYear(), last.getMonth(), Number(loan.emiDay));
-      if(cursor <= last) cursor = new Date(cursor.getFullYear(), cursor.getMonth()+1, Number(loan.emiDay));
-      const rate = Number(loan.interestRate||0)/12/100;
-      const emi = Number(loan.emi||0);
-      let iterations = 0;
-      let loanChanged = false;
-      while(cursor <= today && outstanding>0 && iterations<36){
-        const dateStr = cursor.toISOString().slice(0,10);
-        const interestComp = outstanding * rate;
-        let principalComp = emi - interestComp;
-        if(principalComp < 0) principalComp = 0;
-        if(principalComp > outstanding) principalComp = outstanding;
-        outstanding = Math.max(0, outstanding - principalComp);
-        // Guard against re-logging a month that's already in the ledger — protects against
-        // duplicates if a previous run's balance/date update didn't fully sync before this
-        // one started (the balance math above still needs to run either way to stay correct).
-        const alreadyLogged = state.loanLedger.some(e=> e.loanId===loan.id && e.date===dateStr && e.type==='EMI');
-        if(!alreadyLogged){
-          state.loanLedger.push({
-            id: uid(), loanId: loan.id, date: dateStr, type:'EMI',
-            amount: emi, principalComponent: Math.round(principalComp), interestComponent: Math.round(interestComp), note:''
-          });
-        }
-        last = new Date(cursor);
-        cursor = new Date(cursor.getFullYear(), cursor.getMonth()+1, Number(loan.emiDay));
-        iterations++;
-        loanChanged = true;
-      }
-      if(loanChanged){
-        loan.outstandingBalance = Math.round(outstanding);
-        loan.lastAccrualDate = last.toISOString().slice(0,10);
-        if(outstanding<=0) loan.status = 'Closed';
-        changed = true;
-      }
-    });
-    if(changed){
-      persist('liabilities');
-      persist('loanLedger');
-      showToast(`Caught up ${state.loanLedger.length ? 'EMI history' : ''}`.trim() || 'Loans updated');
-    }
+    // Deliberately do not auto-post EMIs: a due date passing is not proof of payment.
+    // The current principal changes only when the user confirms a payment or updates
+    // the balance from the lender. Projections are calculated separately for display.
+    return;
   }
 
   let sipsReconciled = false;
@@ -2433,6 +2417,23 @@
     sel.innerHTML = state.liabilities.map(l=>`<option value="${l.id}">${l.loanName}</option>`).join('');
     if(scheduleLoanId) sel.value = scheduleLoanId;
   }
+  document.addEventListener('click', (e)=>{
+    const btn = e.target.closest('[data-calc-prepayment]');
+    if(!btn) return;
+    const loan = state.liabilities.find(l=>l.id===btn.dataset.calcPrepayment);
+    if(!loan) return;
+    const amount = Math.max(0, Number(document.getElementById('loanPlanExtra')?.value||0));
+    const date = document.getElementById('loanPlanDate')?.value||'';
+    const result = document.getElementById('loanPlanResult');
+    if(!amount || !date){ if(result) result.textContent='Enter a prepayment amount and date to calculate.'; return; }
+    const base = estimateLoanPayoff(loan);
+    const withExtra = estimateLoanPayoff(loan, amount, date);
+    if(!base.paidOff || !withExtra.paidOff){ if(result) result.textContent='Could not estimate this scenario. Check EMI and interest rate.'; return; }
+    const saved = Math.max(0, base.interest-withExtra.interest);
+    const monthsSaved = Math.max(0, base.months-withExtra.months);
+    if(result) result.textContent=`With ${fmtINR(amount)} planned on ${dateLabel(date)}: estimated interest ${fmtINR(withExtra.interest)} (saving ${fmtINR(saved)}), payoff in about ${withExtra.months} months (${monthsSaved} month(s) sooner). Planned amount is assumed to be applied directly to principal; lender fees/rules may change the result.`;
+  });
+
   document.getElementById('scheduleLoanSelect').addEventListener('change', (e)=>{
     scheduleLoanId = e.target.value;
     renderLoanSchedule();
@@ -2460,7 +2461,19 @@
       return;
     }
     const today = new Date().toISOString().slice(0,10);
-    holder.innerHTML = `<div class="glass table-card"><table class="ledger"><thead><tr>
+    const baseline = estimateLoanPayoff(loan);
+    const forecastSummary = baseline.months===null
+      ? 'EMI/rate inputs do not produce a payoff estimate; verify the loan details.'
+      : `At current EMI, estimated remaining interest is ${fmtINR(baseline.interest)} and estimated remaining payments are ${fmtINR(baseline.payments)} over about ${baseline.months} months.`;
+    holder.innerHTML = `<div class="glass" style="padding:14px;margin-bottom:12px;">
+      <b>Repayment estimate from confirmed principal</b><p class="desc" style="margin:5px 0 12px;">${forecastSummary} This is a planning estimate, not the lender's foreclosure quote.</p>
+      <div class="grid2" style="max-width:680px;">
+        <div class="field"><label for="loanPlanExtra">Planned one-time prepayment (₹)</label><input id="loanPlanExtra" type="number" min="0" step="1" placeholder="e.g. 50000"></div>
+        <div class="field"><label for="loanPlanDate">Planned prepayment date</label><input id="loanPlanDate" type="date" min="${today}" value="${today}"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;"><button type="button" class="btn-primary" data-calc-prepayment="${loan.id}">Calculate scenario</button><span id="loanPlanResult" class="desc" aria-live="polite">Scenario only — does not change actual balance or payment records.</span></div>
+    </div>
+    <div class="glass table-card"><table class="ledger"><thead><tr>
       <th>#</th><th>EMI Date</th><th class="num">Opening</th><th class="num">EMI</th><th class="num">Interest</th><th class="num">Principal</th><th class="num">Extra Payment</th><th class="num">Closing</th>
       </tr></thead><tbody>
       ${rows.map(r=>`<tr${r.date===today ? ' style="box-shadow: inset 3px 0 0 var(--accent);"' : ''}>
@@ -2528,7 +2541,7 @@
         ? `<div class="glass empty"><b>No loans logged yet</b>Add a loan to track EMIs and outstanding balance alongside your assets.</div>`
         : `<div class="glass empty"><b>No matches</b>Try a different search term or filter.</div>`;
     } else {
-      let totalOutstanding = 0, totalEmi = 0;
+      let totalOutstanding = 0, totalEmi = 0, totalFuturePayments = 0, totalFutureInterest = 0;
       const bodyRows = rows.map(l=>{
         const next = l.status!=='Closed' ? nextEmiDate(l) : null;
         totalOutstanding += Number(l.outstandingBalance||0);
@@ -2549,10 +2562,10 @@
         </tr></thead><tbody>
         ${bodyRows}
         </tbody>
-        <tfoot><tr><td colspan="3">Total (${rows.length})</td><td class="num">${fmtINR(totalEmi)}</td><td></td><td></td><td class="num">${fmtINR(totalOutstanding)}</td><td></td><td></td><td></td></tr></tfoot>
+        <tfoot><tr><td colspan="3">Confirmed principal (${rows.length})</td><td class="num">${fmtINR(totalEmi)}</td><td></td><td></td><td class="num">${fmtINR(totalOutstanding)}</td><td></td><td></td><td></td></tr></tfoot>
         </table>`;
-      const totalLine = `<div class="cards-total-line"><span>Total (${rows.length}) — EMI ${fmtINR(totalEmi)}</span><b>${fmtINR(totalOutstanding)}</b></div>`;
-      holder.innerHTML = renderTableOrCards('loans', tableHtml, totalLine);
+      const totalLine = `<div class="cards-total-line"><span>Confirmed principal ${fmtINR(totalOutstanding)} · EMI ${fmtINR(totalEmi)} · Est. future interest ${fmtINR(totalFutureInterest)} · Est. remaining payments ${fmtINR(totalFuturePayments)}</span><b>${fmtINR(totalOutstanding)}</b></div>`;
+      holder.innerHTML = renderTableOrCards('loans', tableHtml, totalLine) + `<p class="desc" style="margin:8px 2px 0;">Estimated future interest: ${fmtINR(totalFutureInterest)} · Estimated remaining payments (principal + future interest): ${fmtINR(totalFuturePayments)}. Estimates assume regular EMIs only; planned prepayments are not included. Dashboard net worth uses confirmed principal, not future interest.</p>`;
     }
     renderLoanRecords();
     renderLoanSchedule();
@@ -2563,7 +2576,7 @@
     if(!holder) return;
     const rows = [...state.loanLedger].sort((a,b)=> b.date.localeCompare(a.date)).slice(0,40);
     if(rows.length===0){
-      holder.innerHTML = `<div class="glass empty"><b>No payment records yet</b>Turn on auto-track on a loan, or log a prepayment, to see records here.</div>`;
+      holder.innerHTML = `<div class="glass empty"><b>No payment records yet</b>Confirm/log an EMI or completed prepayment to see records here.</div>`;
       return;
     }
     const loanName = (id)=>{ const l = state.liabilities.find(x=>x.id===id); return l ? l.loanName : '(removed)'; };
@@ -2651,7 +2664,7 @@
         </tr></thead><tbody>
         ${bodyRows}
         </tbody>
-        <tfoot><tr><td colspan="3">Total (${rows.length})</td><td class="num">${fmtINR(totalCurrent)} of ${fmtINR(totalTarget)}</td><td class="num">${fmtINR(Math.max(0,totalTarget-totalCurrent))}</td><td></td><td></td></tr></tfoot>
+        <tfoot><tr><td colspan="3">Confirmed principal (${rows.length})</td><td class="num">${fmtINR(totalCurrent)} of ${fmtINR(totalTarget)}</td><td class="num">${fmtINR(Math.max(0,totalTarget-totalCurrent))}</td><td></td><td></td></tr></tfoot>
         </table>`;
       const totalLine = `<div class="cards-total-line"><span>Total (${rows.length}) — ${fmtINR(totalCurrent)} of ${fmtINR(totalTarget)}</span><b>${fmtINR(Math.max(0,totalTarget-totalCurrent))} remaining</b></div>`;
       holder.innerHTML = renderTableOrCards('goals', tableHtml, totalLine);
